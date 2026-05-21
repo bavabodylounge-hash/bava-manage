@@ -32,14 +32,17 @@ export default function NewCustomerPage() {
     if (selectedPrograms.length === 0) return alert('프로그램을 1개 이상 선택해주세요.');
     setSaving(true);
     try {
+      console.log('저장 시작:', form.name);
       const id = await createCustomer({
         ...form,
         birthYear: form.birthYear ? parseInt(form.birthYear) : undefined,
         programs: selectedPrograms,
       });
+      console.log('저장 완료, id:', id);
       router.push(`/customers/${id}`);
     } catch (err) {
-      alert('저장 실패: ' + err);
+      console.error('저장 에러:', err);
+      alert('저장 실패: ' + String(err));
       setSaving(false);
     }
   };
