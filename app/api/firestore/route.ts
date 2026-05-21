@@ -1,53 +1,26 @@
+/**
+ * Firestore 서버 API - Firebase Admin SDK 사용
+ * Admin SDK = 보안 규칙 무시 + App Check 무관
+ */
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  restAddDoc,
-  restGetDoc,
-  restGetCollection,
-  restUpdateDoc,
-  restDeleteDoc,
-  restQuery,
-} from '@/lib/firestoreRest';
+import { getAdminDb } from '@/lib/firebaseAdmin';
+import { FieldValue } from 'firebase-admin/firestore';
 
-// 환경변수 진단용 GET
+function cleanUndefined(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+}
+
 export async function GET() {
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  const apiKey    = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-
-  // 실제 쓰기 시도해서 에러 메시지 확인
-  let writeTest: string;
   try {
-    const https = await import('https');
-    const result = await new Promise<string>((resolve) => {
-      const pid = projectId || 'bava-body-lounge';
-      const key = apiKey    || 'AIzaSyCNnzs1GtKhbSnZW68xWKTZkbpfXW0ZipU';
-      const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/bava_customers?key=${key}`;
-      const body = JSON.stringify({ fields: { name: { stringValue: '_diag_test' }, createdAt: { timestampValue: new Date().toISOString() } } });
-      const req = https.default.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } }, (res) => {
-        let d = '';
-        res.on('data', (c: Buffer) => d += c);
-        res.on('end', () => {
-          const j = JSON.parse(d) as { name?: string; error?: { status: string; message: string } };
-          if (res.statusCode === 200) resolve('✅ OK id=' + j.name?.split('/').pop());
-          else resolve(`❌ ${res.statusCode} ${j.error?.status}: ${j.error?.message}`);
-        });
-      });
-      req.on('error', (e: Error) => resolve('❌ 네트워크 오류: ' + e.message));
-      req.write(body);
-      req.end();
-    });
-    writeTest = result;
+    const db = getAdminDb();
+    // 쓰기 테스트
+    const ref = db.collection('_diag').doc('test');
+    await ref.set({ ts: Date.now(), ok: true });
+    await ref.delete();
+    return NextResponse.json({ status: '✅ Admin SDK 정상 작동', sdk: 'firebase-admin' });
   } catch (e) {
-    writeTest = '❌ 예외: ' + String(e);
+    return NextResponse.json({ status: '❌ 실패', error: String(e) }, { status: 500 });
   }
-
-  return NextResponse.json({
-    env: {
-      PROJECT_ID: projectId ? `✅ ${projectId}` : '❌ 없음 (fallback 사용)',
-      API_KEY:    apiKey    ? `✅ ${apiKey.slice(0,8)}...` : '❌ 없음 (fallback 사용)',
-    },
-    writeTest,
-    time: new Date().toISOString(),
-  });
 }
 
 export async function POST(req: NextRequest) {
@@ -59,47 +32,56 @@ export async function POST(req: NextRequest) {
       data?: Record<string, unknown>;
       where?: { field: string; value: string };
     };
-    const { action, collection, docId, data, where: whereClause } = body;
+    const { action, collection, docId, data, where: w } = body;
+    const db = getAdminDb();
 
     switch (action) {
       case 'add': {
         if (!data) return NextResponse.json({ error: 'data required' }, { status: 400 });
-        const id = await restAddDoc(collection, {
-          ...data,
-          createdAt: new Date().toISOString(),
+        const ref = await db.collection(collection).add({
+          ...cleanUndefined(data),
+          createdAt: FieldValue.serverTimestamp(),
         });
-        return NextResponse.json({ id });
+        return NextResponse.json({ id: ref.id });
       }
+
       case 'get': {
         if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
-        const doc = await restGetDoc(collection, docId);
-        if (!doc) return NextResponse.json({ error: 'not found' }, { status: 404 });
-        return NextResponse.json(doc);
+        const snap = await db.collection(collection).doc(docId).get();
+        if (!snap.exists) return NextResponse.json({ error: 'not found' }, { status: 404 });
+        return NextResponse.json({ id: snap.id, ...snap.data() });
       }
+
       case 'getAll': {
-        const docs = await restGetCollection(collection);
+        const snap = await db.collection(collection).get();
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         return NextResponse.json({ docs });
       }
+
       case 'query': {
-        if (!whereClause) return NextResponse.json({ error: 'where required' }, { status: 400 });
-        const docs = await restQuery(collection, whereClause.field, whereClause.value);
+        if (!w) return NextResponse.json({ error: 'where required' }, { status: 400 });
+        const snap = await db.collection(collection).where(w.field, '==', w.value).get();
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         return NextResponse.json({ docs });
       }
+
       case 'update': {
         if (!docId || !data) return NextResponse.json({ error: 'docId and data required' }, { status: 400 });
-        await restUpdateDoc(collection, docId, data);
+        await db.collection(collection).doc(docId).update(cleanUndefined(data));
         return NextResponse.json({ success: true });
       }
+
       case 'delete': {
         if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
-        await restDeleteDoc(collection, docId);
+        await db.collection(collection).doc(docId).delete();
         return NextResponse.json({ success: true });
       }
+
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
   } catch (err) {
-    console.error('[/api/firestore] Error:', err);
+    console.error('[/api/firestore]', err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
