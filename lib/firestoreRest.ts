@@ -1,16 +1,13 @@
 /**
  * Firestore REST API 클라이언트
  * App Check 우회: 브라우저 → Next.js API Route → Firestore REST API
- * 
- * App Check는 Firebase JS SDK (브라우저)에만 적용됨.
- * Next.js 서버에서 REST API를 직접 호출하면 App Check 토큰 불필요.
  */
 
 const PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'bava-body-lounge';
-const API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyCNnzs1GtKhbSnZW68xWKTZkbpfXW0ZipU';
-const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+const API_KEY    = process.env.NEXT_PUBLIC_FIREBASE_API_KEY    || 'AIzaSyCNnzs1GtKhbSnZW68xWKTZkbpfXW0ZipU';
+const BASE_URL   = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 
-// ──────────────── Firestore 값 변환 유틸 ────────────────
+// ──────────────── Firestore 타입 정의 ────────────────
 
 type FirestoreValue =
   | { stringValue: string }
@@ -22,7 +19,13 @@ type FirestoreValue =
   | { arrayValue: { values?: FirestoreValue[] } }
   | { mapValue: { fields?: Record<string, FirestoreValue> } };
 
-/** JS 값 → Firestore 타입 변환 */
+interface FirestoreDoc {
+  name: string;
+  fields?: Record<string, FirestoreValue>;
+}
+
+// ──────────────── 타입 변환 ────────────────
+
 function toFirestoreValue(val: unknown): FirestoreValue {
   if (val === null || val === undefined) return { nullValue: null };
   if (typeof val === 'boolean') return { booleanValue: val };
@@ -44,18 +47,15 @@ function toFirestoreValue(val: unknown): FirestoreValue {
   return { stringValue: String(val) };
 }
 
-/** Firestore 타입 → JS 값 변환 */
 function fromFirestoreValue(val: FirestoreValue): unknown {
-  if ('nullValue' in val) return null;
-  if ('booleanValue' in val) return val.booleanValue;
-  if ('integerValue' in val) return parseInt(val.integerValue);
-  if ('doubleValue' in val) return val.doubleValue;
-  if ('stringValue' in val) return val.stringValue;
+  if ('nullValue'      in val) return null;
+  if ('booleanValue'   in val) return val.booleanValue;
+  if ('integerValue'   in val) return parseInt(val.integerValue);
+  if ('doubleValue'    in val) return val.doubleValue;
+  if ('stringValue'    in val) return val.stringValue;
   if ('timestampValue' in val) return val.timestampValue;
-  if ('arrayValue' in val) {
-    return (val.arrayValue.values || []).map(fromFirestoreValue);
-  }
-  if ('mapValue' in val) {
+  if ('arrayValue'     in val) return (val.arrayValue.values || []).map(fromFirestoreValue);
+  if ('mapValue'       in val) {
     const obj: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(val.mapValue.fields || {})) {
       obj[k] = fromFirestoreValue(v);
@@ -65,7 +65,6 @@ function fromFirestoreValue(val: FirestoreValue): unknown {
   return null;
 }
 
-/** JS 객체 → Firestore fields 변환 */
 export function toFirestoreFields(data: Record<string, unknown>): Record<string, FirestoreValue> {
   const fields: Record<string, FirestoreValue> = {};
   for (const [k, v] of Object.entries(data)) {
@@ -74,11 +73,7 @@ export function toFirestoreFields(data: Record<string, unknown>): Record<string,
   return fields;
 }
 
-/** Firestore 문서 → JS 객체 변환 */
-export function fromFirestoreDoc(doc: {
-  name: string;
-  fields?: Record<string, FirestoreValue>;
-}): Record<string, unknown> {
+export function fromFirestoreDoc(doc: FirestoreDoc): Record<string, unknown> {
   const id = doc.name.split('/').pop()!;
   const data: Record<string, unknown> = { id };
   for (const [k, v] of Object.entries(doc.fields || {})) {
@@ -87,21 +82,22 @@ export function fromFirestoreDoc(doc: {
   return data;
 }
 
-// ──────────────── REST API 호출 ────────────────
+// ──────────────── HTTP 요청 ────────────────
 
 async function firestoreRequest(
-  path: string,
+  fullUrl: string,
   method: string,
   body?: unknown
 ): Promise<unknown> {
-  const url = `${BASE_URL}/${path}?key=${API_KEY}`;
-  const res = await fetch(url, {
+  const res = await fetch(fullUrl, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
   });
+
   const json = await res.json() as { error?: { status: string; message: string } };
+
   if (!res.ok) {
     const err = json.error;
     throw new Error(`Firestore REST Error [${err?.status}]: ${err?.message}`);
@@ -109,26 +105,37 @@ async function firestoreRequest(
   return json;
 }
 
-/** 컬렉션에 문서 추가 (POST → auto-generated ID) */
+/** URL 생성 헬퍼 */
+function docUrl(collection: string, docId?: string, params?: Record<string, string>) {
+  const base = docId
+    ? `${BASE_URL}/${collection}/${docId}`
+    : `${BASE_URL}/${collection}`;
+  const qs = new URLSearchParams({ key: API_KEY, ...(params || {}) });
+  return `${base}?${qs.toString()}`;
+}
+
+// ──────────────── CRUD 함수 ────────────────
+
+/** 문서 추가 (auto-ID) */
 export async function restAddDoc(
-  collectionPath: string,
+  collection: string,
   data: Record<string, unknown>
 ): Promise<string> {
-  const fields = toFirestoreFields(data);
-  const result = await firestoreRequest(collectionPath, 'POST', { fields }) as { name: string };
+  const url = docUrl(collection);
+  const result = await firestoreRequest(url, 'POST', {
+    fields: toFirestoreFields(data),
+  }) as FirestoreDoc;
   return result.name.split('/').pop()!;
 }
 
-/** 특정 문서 가져오기 */
+/** 문서 단건 조회 */
 export async function restGetDoc(
-  collectionPath: string,
+  collection: string,
   docId: string
 ): Promise<Record<string, unknown> | null> {
   try {
-    const result = await firestoreRequest(`${collectionPath}/${docId}`, 'GET') as {
-      name: string;
-      fields?: Record<string, FirestoreValue>;
-    };
+    const url = docUrl(collection, docId);
+    const result = await firestoreRequest(url, 'GET') as FirestoreDoc;
     return fromFirestoreDoc(result);
   } catch (e) {
     if (String(e).includes('NOT_FOUND')) return null;
@@ -138,55 +145,52 @@ export async function restGetDoc(
 
 /** 문서 업데이트 (PATCH) */
 export async function restUpdateDoc(
-  collectionPath: string,
+  collection: string,
   docId: string,
   data: Record<string, unknown>
 ): Promise<void> {
   const fields = toFirestoreFields(data);
-  const fieldPaths = Object.keys(fields).join(',');
-  await firestoreRequest(
-    `${collectionPath}/${docId}?updateMask.fieldPaths=${fieldPaths}`,
-    'PATCH',
-    { fields }
-  );
+  const fieldPaths = Object.keys(fields);
+  const params: Record<string, string> = {};
+  // updateMask는 반복 파라미터 → URLSearchParams는 마지막만 유지하므로 수동 처리
+  const maskQs = fieldPaths.map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+  const url = `${BASE_URL}/${collection}/${docId}?key=${API_KEY}&${maskQs}`;
+  await firestoreRequest(url, 'PATCH', { fields });
 }
 
 /** 문서 삭제 */
 export async function restDeleteDoc(
-  collectionPath: string,
+  collection: string,
   docId: string
 ): Promise<void> {
-  await firestoreRequest(`${collectionPath}/${docId}`, 'DELETE');
+  const url = docUrl(collection, docId);
+  await firestoreRequest(url, 'DELETE');
 }
 
 /** 컬렉션 전체 조회 */
 export async function restGetCollection(
-  collectionPath: string
+  collection: string
 ): Promise<Record<string, unknown>[]> {
-  const result = await firestoreRequest(collectionPath, 'GET') as {
-    documents?: Array<{ name: string; fields?: Record<string, FirestoreValue> }>;
+  const url = docUrl(collection);
+  const result = await firestoreRequest(url, 'GET') as {
+    documents?: FirestoreDoc[];
   };
   if (!result.documents) return [];
   return result.documents.map(fromFirestoreDoc);
 }
 
-/** 쿼리 (where 조건) */
+/** where 단일 조건 쿼리 */
 export async function restQuery(
-  collectionPath: string,
+  collection: string,
   fieldPath: string,
   value: string
 ): Promise<Record<string, unknown>[]> {
-  const parts = collectionPath.split('/');
-  const collectionId = parts[parts.length - 1];
-  const parentPath = parts.slice(0, -1).join('/');
-
-  const queryUrl = parentPath
-    ? `${BASE_URL.replace('/documents', '')}/documents/${parentPath}:runQuery?key=${API_KEY}`
-    : `${BASE_URL.replace('/documents', '')}/documents:runQuery?key=${API_KEY}`;
+  // runQuery 엔드포인트: /documents:runQuery (프로젝트 루트 기준)
+  const url = `${BASE_URL}:runQuery?key=${API_KEY}`;
 
   const body = {
     structuredQuery: {
-      from: [{ collectionId }],
+      from: [{ collectionId: collection }],
       where: {
         fieldFilter: {
           field: { fieldPath },
@@ -197,17 +201,11 @@ export async function restQuery(
     },
   };
 
-  const res = await fetch(queryUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  });
-  const json = await res.json() as Array<{
-    document?: { name: string; fields?: Record<string, FirestoreValue> };
+  const results = await firestoreRequest(url, 'POST', body) as Array<{
+    document?: FirestoreDoc;
   }>;
 
-  return json
+  return results
     .filter(item => item.document)
     .map(item => fromFirestoreDoc(item.document!));
 }
