@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getCustomer, getCustomerReports, createReport } from '@/lib/firestore';
+import { getCustomer, getCustomerReports, createReport } from '@/lib/firestoreClient';
 import { Customer, MonthlyReport, ProgramType, ReportProgram, PROGRAM_LABELS, PROGRAM_EMOJIS } from '@/types';
 
 const PROGRAM_TYPES: ProgramType[] = ['pilatesPt', 'bodyManage', 'circulation', 'headSpa'];

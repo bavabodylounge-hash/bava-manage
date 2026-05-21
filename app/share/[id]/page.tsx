@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { getReport, getCustomer } from '@/lib/firestore';
+import { getReport, getCustomer } from '@/lib/firestoreClient';
 import { MonthlyReport, Customer, ReportProgram, PROGRAM_EMOJIS } from '@/types';
 
 export default function ShareReportPage() {

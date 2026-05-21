@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getAllCustomers, getAllReports } from '@/lib/firestore';
+import { getAllCustomers, getAllReports } from '@/lib/firestoreClient';
 import { Customer, MonthlyReport } from '@/types';
 
 export default function HomePage() {

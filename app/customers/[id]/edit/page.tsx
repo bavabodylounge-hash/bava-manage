@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getCustomer, updateCustomer } from '@/lib/firestore';
+import { getCustomer, updateCustomer } from '@/lib/firestoreClient';
 import { Customer } from '@/types';
 
 const GOALS = ['체지방 감량', '근육 증가', '체형 교정', '건강 유지', '복부 지방 제거', '전반적인 다이어트', '산후 관리', '노화 방지'];

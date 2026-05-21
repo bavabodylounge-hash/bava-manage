@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getCustomer, getCustomerReports, updateCustomer, deleteCustomer } from '@/lib/firestore';
+import { getCustomer, getCustomerReports, updateCustomer, deleteCustomer } from '@/lib/firestoreClient';
 import { Customer, MonthlyReport, ReportProgram, PROGRAM_EMOJIS } from '@/types';
 import { generateMonthlyPDF, generateFinalPDF } from '@/lib/pdfGenerator';
 

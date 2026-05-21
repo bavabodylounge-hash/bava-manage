@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createCustomer } from '@/lib/firestore';
+import { createCustomer } from '@/lib/firestoreClient';
 import { ProgramType, PROGRAM_LABELS, PROGRAM_EMOJIS } from '@/types';
 
 const GOALS = ['체지방 감량', '근육 증가', '체형 교정', '건강 유지', '복부 지방 제거', '전반적인 다이어트', '산후 관리', '노화 방지'];
@@ -34,33 +34,14 @@ export default function NewCustomerPage() {
     setSaving(true);
     setSaveError(null);
 
-    // 타임아웃 타이머 (15초 후 에러 안내)
-    const timeoutId = setTimeout(() => {
-      setSaving(false);
-      setSaveError(
-        '⏰ Firebase 응답 없음 (15초 초과)\n\n' +
-        '가능한 원인:\n' +
-        '① App Check가 Firestore를 차단 중\n' +
-        '→ Firebase 콘솔 → App Check → APIs 탭\n' +
-        '→ firestore.googleapis.com 우측 ⋮ → Unenforce 클릭\n\n' +
-        '② Firestore 보안 규칙이 쓰기 차단\n' +
-        '→ Firebase 콘솔 → Firestore → 규칙\n' +
-        '→ allow read, write: if true; 로 변경'
-      );
-    }, 15000);
-
     try {
-      console.log('[저장 시작]', form.name, selectedPrograms);
       const id = await createCustomer({
         ...form,
         birthYear: form.birthYear ? parseInt(form.birthYear) : undefined,
         programs: selectedPrograms,
       });
-      clearTimeout(timeoutId);
-      console.log('[저장 완료] id:', id);
       router.push(`/customers/${id}`);
     } catch (err) {
-      clearTimeout(timeoutId);
       console.error('[저장 에러]', err);
       setSaving(false);
       setSaveError(String(err));
@@ -188,15 +169,6 @@ export default function NewCustomerPage() {
               <div className="flex-1">
                 <p className="font-bold text-red-700 mb-1">저장 실패</p>
                 <pre className="text-xs text-red-600 whitespace-pre-wrap font-mono bg-red-100 p-2 rounded-lg">{saveError}</pre>
-                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                  <p className="font-bold mb-1">🔧 빠른 해결 방법</p>
-                  <ol className="list-decimal ml-4 space-y-1">
-                    <li><strong>Firebase 콘솔</strong> → <strong>App Check</strong> → <strong>APIs 탭</strong></li>
-                    <li><code className="bg-amber-100 px-1 rounded">firestore.googleapis.com</code> 오른쪽 <strong>⋮</strong> 클릭</li>
-                    <li><strong>&quot;Unenforce&quot;</strong> 클릭 → 저장</li>
-                    <li>또는 Firestore → 규칙 → <code className="bg-amber-100 px-1 rounded">allow read, write: if true;</code></li>
-                  </ol>
-                </div>
               </div>
             </div>
           </div>
@@ -212,7 +184,7 @@ export default function NewCustomerPage() {
             {saving ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                저장 중... (최대 15초)
+                저장 중...
               </span>
             ) : '✅ 고객 등록'}
           </button>
