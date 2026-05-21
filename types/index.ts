@@ -1,19 +1,3 @@
-export interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  birthYear?: number;
-  gender: 'female' | 'male';
-  goal: string;
-  personality: string;
-  startDate: string;
-  endDate?: string;
-  trainerName: string;
-  notes: string;
-  status: 'active' | 'ended';
-  createdAt: string;
-}
-
 // 프로그램 타입
 export type ProgramType = 'pilatesPt' | 'bodyManage' | 'circulation' | 'headSpa';
 
@@ -30,6 +14,23 @@ export const PROGRAM_EMOJIS: Record<ProgramType, string> = {
   circulation: '🔄',
   headSpa:     '💇',
 };
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  birthYear?: number;
+  gender: 'female' | 'male';
+  goal: string;
+  personality: string;
+  startDate: string;
+  endDate?: string;
+  trainerName: string;
+  notes: string;
+  status: 'active' | 'ended';
+  programs?: ProgramType[];   // 등록 시 선택한 프로그램 목록
+  createdAt: string;
+}
 
 // 프로그램별 사진 규칙:
 //   필라테스PT  → Before 3장(앞·측·뒤) + After 3장

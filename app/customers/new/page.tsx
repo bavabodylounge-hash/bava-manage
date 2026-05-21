@@ -2,13 +2,16 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCustomer } from '@/lib/firestore';
+import { ProgramType, PROGRAM_LABELS, PROGRAM_EMOJIS } from '@/types';
 
 const GOALS = ['체지방 감량', '근육 증가', '체형 교정', '건강 유지', '복부 지방 제거', '전반적인 다이어트', '산후 관리', '노화 방지'];
 const TRAINERS = ['김지수', '이하나', '박소연', '최민지', '정유진'];
+const ALL_PROGRAMS: ProgramType[] = ['pilatesPt', 'bodyManage', 'circulation', 'headSpa'];
 
 export default function NewCustomerPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [selectedPrograms, setSelectedPrograms] = useState<ProgramType[]>([]);
   const [form, setForm] = useState({
     name: '', phone: '', birthYear: '', gender: 'female' as 'female' | 'male',
     goal: '체지방 감량', personality: '', startDate: new Date().toISOString().slice(0, 10),
@@ -17,14 +20,22 @@ export default function NewCustomerPage() {
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  const toggleProgram = (p: ProgramType) => {
+    setSelectedPrograms(prev =>
+      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.phone || !form.trainerName) return alert('이름, 연락처, 담당자는 필수입니다.');
+    if (selectedPrograms.length === 0) return alert('프로그램을 1개 이상 선택해주세요.');
     setSaving(true);
     try {
       const id = await createCustomer({
         ...form,
         birthYear: form.birthYear ? parseInt(form.birthYear) : undefined,
+        programs: selectedPrograms,
       });
       router.push(`/customers/${id}`);
     } catch (err) {
@@ -62,13 +73,55 @@ export default function NewCustomerPage() {
                 placeholder="1990" min="1940" max="2010" className="input-field" />
             </Field>
             <Field label="성별">
-              <select value={form.gender} onChange={e => set('gender', e.target.value)}
-                className="input-field">
+              <select value={form.gender} onChange={e => set('gender', e.target.value)} className="input-field">
                 <option value="female">여성</option>
                 <option value="male">남성</option>
               </select>
             </Field>
           </div>
+        </div>
+
+        {/* 프로그램 선택 */}
+        <div className="card space-y-4">
+          <h2 className="font-bold text-gray-700 border-b pb-2">🏋️ 프로그램 선택 * <span className="text-xs font-normal text-gray-400">(복수 선택 가능)</span></h2>
+          <div className="grid grid-cols-2 gap-3">
+            {ALL_PROGRAMS.map(p => {
+              const selected = selectedPrograms.includes(p);
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => toggleProgram(p)}
+                  className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                    selected
+                      ? 'border-purple-500 bg-purple-50'
+                      : 'border-gray-200 bg-white hover:border-purple-200 hover:bg-purple-50/30'
+                  }`}
+                >
+                  <span className="text-2xl">{PROGRAM_EMOJIS[p]}</span>
+                  <div>
+                    <p className={`font-semibold text-sm ${selected ? 'text-purple-700' : 'text-gray-700'}`}>
+                      {PROGRAM_LABELS[p]}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {p === 'pilatesPt' && '사진 앞·측·뒤 3장'}
+                      {p === 'bodyManage' && '사진 1장 + 인치변화'}
+                      {p === 'circulation' && '사진 1장'}
+                      {p === 'headSpa' && '사진 1장'}
+                    </p>
+                  </div>
+                  {selected && (
+                    <span className="ml-auto text-purple-500 text-lg">✓</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {selectedPrograms.length > 0 && (
+            <p className="text-xs text-purple-600 bg-purple-50 px-3 py-2 rounded-lg">
+              선택됨: {selectedPrograms.map(p => PROGRAM_LABELS[p]).join(', ')}
+            </p>
+          )}
         </div>
 
         {/* 관리 정보 */}
@@ -118,14 +171,9 @@ export default function NewCustomerPage() {
 
       <style jsx global>{`
         .input-field {
-          width: 100%;
-          padding: 10px 14px;
-          border: 1px solid #E5E7EB;
-          border-radius: 10px;
-          font-size: 14px;
-          outline: none;
-          transition: border-color 0.15s;
-          background: #FAFAFA;
+          width: 100%; padding: 10px 14px; border: 1px solid #E5E7EB;
+          border-radius: 10px; font-size: 14px; outline: none;
+          transition: border-color 0.15s; background: #FAFAFA;
         }
         .input-field:focus { border-color: #9333EA; background: #fff; box-shadow: 0 0 0 3px rgba(147,51,234,0.08); }
       `}</style>

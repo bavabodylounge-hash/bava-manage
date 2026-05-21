@@ -10,11 +10,13 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getAllCustomers(), getAllReports()]).then(([c, r]) => {
-      setCustomers(c);
-      setReports(r);
-      setLoading(false);
-    });
+    Promise.all([getAllCustomers(), getAllReports()])
+      .then(([c, r]) => {
+        setCustomers(c);
+        setReports(r);
+      })
+      .catch(e => console.error('데이터 로딩 실패:', e))
+      .finally(() => setLoading(false));
   }, []);
 
   const active = customers.filter(c => c.status === 'active');
