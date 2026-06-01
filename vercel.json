@@ -1,0 +1,5 @@
+{
+  "deploymentProtection": {
+    "allowedPaths": ["/share/*", "/api/firestore", "/api/ai-feedback"]
+  }
+}
