@@ -33,22 +33,11 @@ export async function POST(req: NextRequest) {
     // → folder 만 지정 (슬래시 없이 단순 경로)
     // → 파일명은 path 기반 slug로 자동 생성 (Cloudinary가 랜덤 ID 부여)
     // → overwrite, timestamp 옵션 일절 사용 안 함
-    const safeSlug = path
-      .replace(/[^a-zA-Z0-9]/g, '_')  // 슬래시 포함 모든 특수문자 → _
-      .replace(/_+/g, '_')
-      .slice(0, 80);
-
-    const folder = 'bava_manager';   // 슬래시 없는 단일 폴더명
-
     const uploadResult = await new Promise<{ secure_url: string }>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          folder,                        // ← 단순 폴더명만
-          use_filename:       false,     // ← Cloudinary가 파일명 자동 부여
-          unique_filename:    true,
-          resource_type:      'image',
-          context:            `slug=${safeSlug}`,  // 메타로만 경로 보존
-          // ★ public_id, overwrite, timestamp 모두 제거
+          folder: 'bava_manager',
+          resource_type: 'image',
         },
         (error, result) => {
           if (error || !result) {
