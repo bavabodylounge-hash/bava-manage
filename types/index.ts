@@ -57,6 +57,9 @@ export interface MonthlyReport {
   aiDirection?: string;
   createdAt: string;
 
+  // 이번 달 미션 하나
+  monthlyMission?: string;
+
   // 영양 계산 결과 (선택 저장)
   nutrition?: NutritionInfo;
 }

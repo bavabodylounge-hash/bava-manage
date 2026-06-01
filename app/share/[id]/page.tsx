@@ -1,26 +1,23 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { getReport, getCustomer } from '@/lib/firestoreClient';
-import { MonthlyReport, Customer, ReportProgram, PROGRAM_EMOJIS } from '@/types';
+import { getReport, getCustomerReports } from '@/lib/firestoreClient';
+import { MonthlyReport, ReportProgram, PROGRAM_EMOJIS } from '@/types';
 
 export default function ShareReportPage() {
   const { id } = useParams<{ id: string }>();
-  const [report, setReport]   = useState<MonthlyReport | null>(null);
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [report, setReport]       = useState<MonthlyReport | null>(null);
+  const [allReports, setAllReports] = useState<MonthlyReport[]>([]);
+  const [loading, setLoading]     = useState(true);
 
   useEffect(() => {
-    // 매니저 헤더 DOM에서 완전 제거 (어떤 상황에서도 고객에게 안 보이게)
-    const managerHeader = document.querySelector('header');
-    if (managerHeader) managerHeader.remove();
-
     getReport(id)
       .then(async (r) => {
         if (!r) return;
         setReport(r);
-        const c = await getCustomer(r.customerId);
-        setCustomer(c);
+        // 히스토리용 전체 리포트 로드
+        const all = await getCustomerReports(r.customerId);
+        setAllReports(all);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -52,6 +49,11 @@ export default function ShareReportPage() {
   }
 
   const programs = report.programs ?? [];
+
+  // 히스토리 데이터 (최대 6개월, 날짜순)
+  const historyData = allReports
+    .sort((a, b) => a.reportMonth.localeCompare(b.reportMonth))
+    .slice(-6);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16" style={{ WebkitTextSizeAdjust: '100%' }}>
@@ -87,13 +89,17 @@ export default function ShareReportPage() {
 
       <div className="max-w-md mx-auto px-4 -mt-4 space-y-4">
 
+        {/* ★ 이번 달 미션 카드 */}
+        {report.monthlyMission && (
+          <MissionCard mission={report.monthlyMission} name={report.customerName} />
+        )}
+
         {/* 측정 데이터 */}
         <div className="bg-white rounded-2xl shadow-sm p-5 space-y-4">
           <h2 className="font-bold text-gray-800 text-base flex items-center gap-2">
             <span>📊</span> 이번 달 측정 결과
           </h2>
 
-          {/* 체중은 항상 단독으로 크게 표시 */}
           <div className="grid grid-cols-3 gap-3">
             <StatBox label="체중" value={`${report.weight}`} unit="kg" color="purple" />
             {report.bodyFat   != null && <StatBox label="체지방률" value={`${report.bodyFat}`}   unit="%" color="orange" />}
@@ -107,6 +113,11 @@ export default function ShareReportPage() {
             </div>
           )}
         </div>
+
+        {/* ★ 히스토리 그래프 */}
+        {historyData.length >= 2 && (
+          <HistoryGraph reports={historyData} currentReportId={id} />
+        )}
 
         {/* 프로그램별 섹션 */}
         {programs.map(prog => (
@@ -132,7 +143,6 @@ export default function ShareReportPage() {
               <span>🥗</span> 맞춤 영양 플랜
             </h2>
 
-            {/* 목표 감량 배너 */}
             {report.nutrition.targetWeightLoss && (
               <div style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}
                 className="rounded-xl px-4 py-3 text-white">
@@ -144,7 +154,6 @@ export default function ShareReportPage() {
               </div>
             )}
 
-            {/* 칼로리 3박스 */}
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="bg-gray-50 rounded-xl p-3">
                 <p className="text-xs text-gray-400 mb-1">기초대사량</p>
@@ -163,7 +172,6 @@ export default function ShareReportPage() {
               </div>
             </div>
 
-            {/* 탄단지 */}
             <div>
               <p className="text-xs font-semibold text-gray-500 mb-2">하루 권장 섭취량</p>
               <div className="grid grid-cols-3 gap-3">
@@ -188,7 +196,6 @@ export default function ShareReportPage() {
               </div>
             </div>
 
-            {/* 식단 추천 */}
             {report.nutrition.mealPlan && report.nutrition.mealPlan.length > 0 && (
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-2">추천 식단 예시</p>
@@ -230,7 +237,185 @@ export default function ShareReportPage() {
   );
 }
 
-/** 공유 페이지용 프로그램 섹션 */
+/* ──────────────── 이번 달 미션 카드 ──────────────── */
+function MissionCard({ mission, name }: { mission: string; name: string }) {
+  return (
+    <div className="rounded-2xl shadow-sm overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%)' }}>
+      <div className="px-5 pt-5 pb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-2xl">🎯</span>
+          <div>
+            <p className="text-amber-900 text-xs font-bold tracking-widest uppercase">이번 달 미션</p>
+            <p className="text-amber-800 text-xs">{name}님만을 위한 단 하나의 목표</p>
+          </div>
+        </div>
+        <div className="bg-white/40 rounded-xl px-4 py-3">
+          <p className="text-amber-900 font-bold text-base leading-relaxed">{mission}</p>
+        </div>
+        <p className="text-amber-800 text-xs mt-3 text-center">
+          ✨ 이것 하나만 지켜도 다음 달이 달라집니다
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────── 히스토리 그래프 ──────────────── */
+function HistoryGraph({ reports, currentReportId }: { reports: MonthlyReport[]; currentReportId: string }) {
+  const weights  = reports.map(r => r.weight);
+  const bodyFats = reports.map(r => r.bodyFat);
+  const hasBodyFat = bodyFats.some(v => v != null);
+
+  const minW = Math.min(...weights) - 1;
+  const maxW = Math.max(...weights) + 1;
+  const rangeW = maxW - minW || 1;
+
+  // SVG 좌표 계산
+  const W = 300, H = 100, PAD = 20;
+  const xStep = (W - PAD * 2) / Math.max(reports.length - 1, 1);
+
+  const toX = (i: number) => PAD + i * xStep;
+  const toYW = (v: number) => H - PAD - ((v - minW) / rangeW) * (H - PAD * 2);
+
+  // 체지방 y축
+  const fatVals = bodyFats.filter((v): v is number => v != null);
+  const minF = fatVals.length ? Math.min(...fatVals) - 1 : 0;
+  const maxF = fatVals.length ? Math.max(...fatVals) + 1 : 100;
+  const rangeF = maxF - minF || 1;
+  const toYF = (v: number) => H - PAD - ((v - minF) / rangeF) * (H - PAD * 2);
+
+  // 체중 꺾은선 path
+  const weightPath = reports.map((r, i) =>
+    `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toYW(r.weight).toFixed(1)}`
+  ).join(' ');
+
+  // 체지방 꺾은선 path
+  const fatPoints = reports.map((r, i) => ({ x: toX(i), y: r.bodyFat != null ? toYF(r.bodyFat) : null }));
+  const fatPath = fatPoints.reduce((acc, p, i) => {
+    if (p.y == null) return acc;
+    const prev = fatPoints.slice(0, i).reverse().find(q => q.y != null);
+    return acc + `${!prev ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)} `;
+  }, '');
+
+  // 첫 → 마지막 체중 변화
+  const first = reports[0].weight;
+  const last  = reports[reports.length - 1].weight;
+  const diff  = last - first;
+  const totalMonths = reports.length;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-bold text-gray-800 text-base flex items-center gap-2">
+          <span>📈</span> 나의 변화 히스토리
+        </h2>
+        <span className="text-xs text-gray-400">{totalMonths}개월 기록</span>
+      </div>
+
+      {/* 총 변화 요약 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className={`rounded-xl p-3 text-center ${diff <= 0 ? 'bg-green-50' : 'bg-orange-50'}`}>
+          <p className="text-xs text-gray-500 mb-1">시작 대비 체중 변화</p>
+          <p className={`text-xl font-bold ${diff <= 0 ? 'text-green-600' : 'text-orange-500'}`}>
+            {diff > 0 ? '+' : ''}{diff.toFixed(1)}kg
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">{first}kg → {last}kg</p>
+        </div>
+        {hasBodyFat && (() => {
+          const firstFat = reports.find(r => r.bodyFat != null)?.bodyFat;
+          const lastFat  = [...reports].reverse().find(r => r.bodyFat != null)?.bodyFat;
+          if (firstFat == null || lastFat == null) return null;
+          const fatDiff = lastFat - firstFat;
+          return (
+            <div className={`rounded-xl p-3 text-center ${fatDiff <= 0 ? 'bg-green-50' : 'bg-orange-50'}`}>
+              <p className="text-xs text-gray-500 mb-1">시작 대비 체지방 변화</p>
+              <p className={`text-xl font-bold ${fatDiff <= 0 ? 'text-green-600' : 'text-orange-500'}`}>
+                {fatDiff > 0 ? '+' : ''}{fatDiff.toFixed(1)}%
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">{firstFat}% → {lastFat}%</p>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* SVG 그래프 */}
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 120 }}>
+          {/* 격자선 */}
+          {[0.25, 0.5, 0.75].map(t => (
+            <line key={t}
+              x1={PAD} y1={(H - PAD) - t * (H - PAD * 2)}
+              x2={W - PAD} y2={(H - PAD) - t * (H - PAD * 2)}
+              stroke="#F3F4F6" strokeWidth="1" />
+          ))}
+
+          {/* 체지방 꺾은선 (주황) */}
+          {hasBodyFat && fatPath && (
+            <path d={fatPath} fill="none" stroke="#F97316" strokeWidth="1.5" strokeDasharray="4 2" strokeLinecap="round" />
+          )}
+
+          {/* 체중 꺾은선 (보라) */}
+          <path d={weightPath} fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* 체중 점 */}
+          {reports.map((r, i) => {
+            const isCurrent = r.id === currentReportId;
+            return (
+              <g key={i}>
+                <circle cx={toX(i)} cy={toYW(r.weight)} r={isCurrent ? 5 : 3}
+                  fill={isCurrent ? '#7C3AED' : '#fff'}
+                  stroke="#7C3AED" strokeWidth="2" />
+                {isCurrent && (
+                  <circle cx={toX(i)} cy={toYW(r.weight)} r={9}
+                    fill="none" stroke="#7C3AED" strokeWidth="1" opacity="0.3" />
+                )}
+              </g>
+            );
+          })}
+
+          {/* 체지방 점 */}
+          {hasBodyFat && reports.map((r, i) => {
+            if (r.bodyFat == null) return null;
+            return (
+              <circle key={i} cx={toX(i)} cy={toYF(r.bodyFat)} r={2.5}
+                fill="#F97316" stroke="#fff" strokeWidth="1" />
+            );
+          })}
+        </svg>
+
+        {/* X축 레이블 (월) */}
+        <div className="flex justify-between px-5 -mt-1">
+          {reports.map(r => (
+            <span key={r.reportMonth} className="text-xs text-gray-400">
+              {r.reportMonth.slice(5)}월
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 범례 */}
+      <div className="flex items-center gap-4 justify-center text-xs text-gray-500">
+        <div className="flex items-center gap-1.5">
+          <div className="w-4 h-0.5 bg-purple-600 rounded" />
+          <span>체중 (kg)</span>
+        </div>
+        {hasBodyFat && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-4 h-0.5 bg-orange-400 rounded" style={{ borderTop: '1.5px dashed #F97316' }} />
+            <span>체지방률 (%)</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-purple-600 border-2 border-purple-600" />
+          <span>이번 달</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────── 프로그램 섹션 (BEST 배지 포함) ──────────────── */
 function ShareProgramSection({ prog }: { prog: ReportProgram }) {
   const isPilates    = prog.programType === 'pilatesPt';
   const isBodyManage = prog.programType === 'bodyManage';
@@ -251,12 +436,23 @@ function ShareProgramSection({ prog }: { prog: ReportProgram }) {
     ] : []),
   ].filter((p): p is { url: string; label: string } => !!p.url);
 
+  // 인치 변화 (BEST 계산 포함)
   const inchRows = isBodyManage ? [
     { label: '하체 둘레', before: prog.inchLowerBefore,    after: prog.inchLowerAfter },
     { label: '팔 둘레',   before: prog.inchArmBefore,      after: prog.inchArmAfter },
     { label: '복부 둘레', before: prog.inchAbdomenBefore,  after: prog.inchAbdomenAfter },
     { label: '엉덩이',    before: prog.inchHipBefore,      after: prog.inchHipAfter },
   ].filter(r => r.before != null || r.after != null) : [];
+
+  // ★ BEST 배지: diff 가장 작은(많이 줄어든) 항목
+  const diffs = inchRows.map(r =>
+    r.before != null && r.after != null ? r.after - r.before : null
+  );
+  const minDiff = diffs.reduce<number | null>((m, d) =>
+    d != null && (m == null || d < m) ? d : m, null
+  );
+  const bestIdx = minDiff != null && minDiff < 0
+    ? diffs.findIndex(d => d === minDiff) : -1;
 
   const total    = (prog.currentSession ?? 0) + (prog.remainingSessions ?? 0);
   const progress = total > 0 ? Math.min(100, ((prog.currentSession ?? 0) / total) * 100) : 0;
@@ -265,7 +461,6 @@ function ShareProgramSection({ prog }: { prog: ReportProgram }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm p-5 space-y-4">
 
-      {/* 헤더 */}
       <div className="flex items-center justify-between">
         <h2 className="font-bold text-gray-800 text-base">
           {PROGRAM_EMOJIS[prog.programType]} {prog.programLabel}
@@ -324,7 +519,7 @@ function ShareProgramSection({ prog }: { prog: ReportProgram }) {
         </div>
       )}
 
-      {/* Before & After 나란히 비교 (1장씩인 경우) */}
+      {/* Before & After 나란히 */}
       {!isPilates && beforePhotos.length > 0 && afterPhotos.length > 0 && (
         <div>
           <p className="text-sm font-bold text-gray-700 mb-2">🔄 Before &amp; After 비교</p>
@@ -343,17 +538,27 @@ function ShareProgramSection({ prog }: { prog: ReportProgram }) {
         </div>
       )}
 
-      {/* 인치 변화 */}
+      {/* ★ 인치 변화 (BEST 배지 포함) */}
       {inchRows.length > 0 && (
         <div>
           <p className="text-sm font-bold text-teal-600 mb-2">📏 인치 변화 (cm)</p>
           <div className="space-y-2">
-            {inchRows.map(r => {
+            {inchRows.map((r, idx) => {
               const diff = r.before != null && r.after != null ? r.after - r.before : null;
+              const isBest = idx === bestIdx;
               return (
                 <div key={r.label}
-                  className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
-                  <span className="text-sm text-gray-600 font-medium">{r.label}</span>
+                  className={`flex items-center justify-between rounded-xl px-4 py-3 transition-colors ${
+                    isBest ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'
+                  }`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 font-medium">{r.label}</span>
+                    {isBest && (
+                      <span className="inline-flex items-center gap-1 bg-amber-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                        🔥 BEST
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-gray-500">{r.before ?? '-'}</span>
                     <span className="text-gray-300">→</span>
@@ -372,10 +577,20 @@ function ShareProgramSection({ prog }: { prog: ReportProgram }) {
               );
             })}
           </div>
+
+          {/* BEST 항목 강조 메시지 */}
+          {bestIdx >= 0 && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                🏆 이번 달 <span className="font-bold">{inchRows[bestIdx].label}</span>에서
+                <span className="font-bold text-amber-600"> {Math.abs(diffs[bestIdx]!).toFixed(1)}cm</span> 감량!
+                가장 눈에 띄는 변화입니다.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* 사진·인치 모두 없는 경우 */}
       {beforePhotos.length === 0 && afterPhotos.length === 0 && inchRows.length === 0 && (
         <p className="text-sm text-gray-400 text-center py-2">이 프로그램의 기록이 없습니다.</p>
       )}

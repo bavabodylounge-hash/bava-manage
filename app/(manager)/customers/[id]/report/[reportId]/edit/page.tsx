@@ -135,6 +135,8 @@ export default function EditReportPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [nutrition, setNutrition] = useState<NutritionResult | null>(null);
@@ -148,8 +150,9 @@ export default function EditReportPage() {
   const [muscleMass,   setMuscleMass]   = useState('');
   const [personality,  setPersonality]  = useState('');
   const [monthlyNote,  setMonthlyNote]  = useState('');
-  const [aiFeedback,   setAiFeedback]   = useState('');
-  const [aiDirection,  setAiDirection]  = useState('');
+  const [aiFeedback,      setAiFeedback]      = useState('');
+  const [aiDirection,     setAiDirection]     = useState('');
+  const [monthlyMission,  setMonthlyMission]  = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const [programs, setPrograms] = useState<Record<ProgramType, ProgramState>>({
@@ -174,8 +177,9 @@ export default function EditReportPage() {
       setMuscleMass(r.muscleMass != null ? String(r.muscleMass) : '');
       setPersonality(r.personality  ?? '');
       setMonthlyNote(r.monthlyNote  ?? '');
-      setAiFeedback(r.aiFeedback    ?? '');
-      setAiDirection(r.aiDirection  ?? '');
+      setAiFeedback(r.aiFeedback       ?? '');
+      setAiDirection(r.aiDirection     ?? '');
+      setMonthlyMission(r.monthlyMission ?? '');
 
       // 기존 프로그램 데이터 복원
       const next = { ...programs };
@@ -274,13 +278,15 @@ export default function EditReportPage() {
     }
   };
 
-  // 저장
+  // 저장 (재시도 포함 안정화)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const selectedTypes = PROGRAM_TYPES.filter(t => programs[t].selected);
     if (!weight) return alert('체중은 필수입니다.');
     if (selectedTypes.length === 0) return alert('프로그램을 최소 1개 선택해주세요.');
     setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
     try {
       const reportPrograms: ReportProgram[] = selectedTypes.map(type => {
         const p = programs[type];
@@ -318,8 +324,9 @@ export default function EditReportPage() {
         programs:    reportPrograms,
         personality,
         monthlyNote,
-        aiFeedback:  aiFeedback  || undefined,
-        aiDirection: aiDirection || undefined,
+        aiFeedback:     aiFeedback     || undefined,
+        aiDirection:    aiDirection    || undefined,
+        monthlyMission: monthlyMission || undefined,
         // ★ 영양 계산 결과 저장
         nutrition: nutrition ? {
           bmr: nutrition.bmr,
@@ -330,14 +337,28 @@ export default function EditReportPage() {
           fat: nutrition.fat,
           targetWeightLoss: nutrition.targetWeightLoss,
           weeklyDeficit: nutrition.weeklyDeficit,
+          weeksToGoal: nutrition.weeksToGoal,
           mealPlan: nutrition.mealPlan,
         } : undefined,
       };
 
-      await updateReport(reportId, patch);
-      router.push(`/customers/${id}`);
+      // 최대 3회 재시도
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await updateReport(reportId, patch);
+          setSaveSuccess(true);
+          setTimeout(() => router.push(`/customers/${id}`), 800);
+          return;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
+        }
+      }
+      setSaveError(`저장 실패 (3회 시도): ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
+      setSaving(false);
     } catch (err) {
-      alert('저장 실패: ' + err);
+      setSaveError(`저장 실패: ${err instanceof Error ? err.message : String(err)}`);
       setSaving(false);
     }
   };
@@ -706,15 +727,61 @@ export default function EditReportPage() {
           )}
         </div>
 
+        {/* ⑥ 이번 달 미션 하나 */}
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2 border-b pb-2">
+            <span className="text-xl">🎯</span>
+            <h2 className="font-bold text-gray-700">이번 달 미션 하나</h2>
+            <span className="ml-auto text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">회원 리포트에 표시</span>
+          </div>
+          <p className="text-xs text-gray-400">딱 하나의 실천 가능한 미션. 짧고 구체적일수록 효과적입니다.</p>
+          <div className="flex flex-wrap gap-2">
+            {['하루 단백질 120g 채우기', '취침 3시간 전 야식 금지', '물 하루 2L 마시기', '엘리베이터 대신 계단 이용'].map(ex => (
+              <button key={ex} type="button" onClick={() => setMonthlyMission(ex)}
+                className="text-xs px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full hover:bg-amber-100 transition-colors">
+                {ex}
+              </button>
+            ))}
+          </div>
+          <textarea value={monthlyMission} onChange={e => setMonthlyMission(e.target.value)}
+            rows={2}
+            placeholder="예: 하루 단백질 120g 채우기 — 이것만 지켜도 다음 달 근육량 +0.3kg 예측!"
+            className="input-field resize-none" />
+        </div>
+
+        {/* 저장 에러 */}
+        {saveError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <span className="text-xl">⚠️</span>
+            <div>
+              <p className="font-semibold text-red-700 text-sm">저장 실패</p>
+              <p className="text-xs text-red-500 mt-1">{saveError}</p>
+            </div>
+          </div>
+        )}
+
+        {/* 저장 성공 */}
+        {saveSuccess && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <p className="font-semibold text-green-700">저장 완료! 페이지를 이동합니다...</p>
+          </div>
+        )}
+
         {/* 저장 버튼 */}
         <div className="flex gap-3 pb-8">
           <button type="button" onClick={() => router.back()}
             className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-xl font-semibold hover:bg-gray-50 transition-colors">
             취소
           </button>
-          <button type="submit" disabled={saving || selectedTypes.length === 0}
+          <button type="submit" disabled={saving || saveSuccess || selectedTypes.length === 0}
             className="flex-1 py-3 bava-gradient text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-50">
-            {saving ? '저장 중...' : '✅ 수정 완료'}
+            {saving && !saveSuccess ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                저장 중...
+              </span>
+            ) : saveSuccess ? '✅ 저장 완료!' : '✅ 수정 완료'}
           </button>
         </div>
       </form>
