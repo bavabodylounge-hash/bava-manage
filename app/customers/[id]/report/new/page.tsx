@@ -29,6 +29,67 @@ const INCH_ITEMS = [
   { label: '엉덩이',    sub: '힙라인',         beforeKey: 'inchHipBefore',   afterKey: 'inchHipAfter' },
 ];
 
+// ──── 영양 계산 ────
+interface NutritionResult {
+  bmr: number;       // 기초대사량 (kcal)
+  tdee: number;      // 활동대사량
+  targetKcal: number;
+  carb: number;      // 탄수화물 (g)
+  protein: number;   // 단백질 (g)
+  fat: number;       // 지방 (g)
+  mealPlan: string[];// 식단 추천
+}
+
+function calcNutrition(
+  weightKg: number,
+  heightCm: number,
+  gender: 'female' | 'male',
+  goal: string,
+  bodyFatPct?: number
+): NutritionResult {
+  // Mifflin-St Jeor 공식
+  const bmr = gender === 'female'
+    ? 10 * weightKg + 6.25 * heightCm - 5 * 30 - 161
+    : 10 * weightKg + 6.25 * heightCm - 5 * 30 + 5;
+
+  const tdee = Math.round(bmr * 1.4); // 가벼운 활동 기준
+
+  // 목표별 칼로리
+  const isLoss = goal.includes('감량') || goal.includes('다이어트') || goal.includes('지방');
+  const isBulk = goal.includes('근육') || goal.includes('증가');
+  const targetKcal = isLoss ? Math.round(tdee * 0.8) : isBulk ? Math.round(tdee * 1.1) : tdee;
+
+  // 탄·단·지 비율 (감량: 40/35/25 / 증가: 45/30/25 / 유지: 45/25/30)
+  let carbRatio = 0.45, protRatio = 0.25, fatRatio = 0.30;
+  if (isLoss)  { carbRatio = 0.40; protRatio = 0.35; fatRatio = 0.25; }
+  if (isBulk)  { carbRatio = 0.45; protRatio = 0.30; fatRatio = 0.25; }
+
+  const carb    = Math.round((targetKcal * carbRatio) / 4);
+  const protein = Math.round((targetKcal * protRatio) / 4);
+  const fat     = Math.round((targetKcal * fatRatio)  / 9);
+
+  // 식단 추천
+  const mealPlan: string[] = [];
+  if (isLoss) {
+    mealPlan.push('🌅 아침: 닭가슴살 샐러드 + 삶은 달걀 2개 + 방울토마토');
+    mealPlan.push('☀️ 점심: 현미밥 반공기 + 두부조림 + 나물 반찬 2가지');
+    mealPlan.push('🌙 저녁: 고구마 1개 + 그릭요거트 + 오이·당근 스틱');
+    mealPlan.push('🍎 간식: 아몬드 15알 또는 단백질 쉐이크');
+  } else if (isBulk) {
+    mealPlan.push('🌅 아침: 귀리오트밀 + 바나나 1개 + 삶은 달걀 3개');
+    mealPlan.push('☀️ 점심: 현미밥 1공기 + 닭가슴살 150g + 채소볶음');
+    mealPlan.push('🌙 저녁: 고구마 2개 + 두부 반모 + 브로콜리');
+    mealPlan.push('💪 운동 후: 단백질 쉐이크 + 바나나');
+  } else {
+    mealPlan.push('🌅 아침: 통곡물빵 2장 + 스크램블에그 + 우유 200ml');
+    mealPlan.push('☀️ 점심: 잡곡밥 + 생선구이 + 나물 반찬');
+    mealPlan.push('🌙 저녁: 닭가슴살 + 샐러드 + 견과류 한 줌');
+    mealPlan.push('🍵 간식: 그릭요거트 or 프로틴바 1개');
+  }
+
+  return { bmr: Math.round(bmr), tdee, targetKcal, carb, protein, fat, mealPlan };
+}
+
 // 프로그램별 데이터 상태
 interface ProgramState {
   selected: boolean;
@@ -49,7 +110,8 @@ export default function NewReportPage() {
   const [allReports, setAllReports] = useState<MonthlyReport[]>([]);
   const [saving, setSaving] = useState(false);
   const [generatingAI, setGeneratingAI] = useState(false);
-  const [uploadingKey, setUploadingKey] = useState<string | null>(null); // "programType_photoKey"
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [nutrition, setNutrition] = useState<NutritionResult | null>(null); // "programType_photoKey"
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const [reportMonth, setReportMonth] = useState(thisMonth);
@@ -220,6 +282,17 @@ export default function NewReportPage() {
     bmiInfo = `BMI ${bmi.toFixed(1)} · <span class="${color} font-semibold">${cat}</span>`;
   }
 
+  // 재등록 임박 경고 (최근 리포트 기준)
+  const reRegWarnings: { programLabel: string; remaining: number }[] = [];
+  if (allReports.length > 0) {
+    const latest = allReports[allReports.length - 1];
+    for (const p of latest.programs || []) {
+      if (p.remainingSessions !== undefined && p.remainingSessions <= 5) {
+        reRegWarnings.push({ programLabel: p.programLabel, remaining: p.remainingSessions });
+      }
+    }
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-5">
       {/* 헤더 */}
@@ -230,6 +303,26 @@ export default function NewReportPage() {
           <p className="text-gray-500 text-sm">{customer.name} · {customer.goal}</p>
         </div>
       </div>
+
+      {/* 재등록 임박 경고 배너 */}
+      {reRegWarnings.length > 0 && (
+        <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl">🔔</span>
+            <p className="font-bold text-rose-700">재등록 상담 필요</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {reRegWarnings.map(w => (
+              <span key={w.programLabel}
+                className="inline-flex items-center gap-1.5 bg-rose-100 text-rose-700 px-3 py-1.5 rounded-full text-sm font-semibold">
+                {w.programLabel}
+                <span className="bg-rose-500 text-white text-xs px-1.5 py-0.5 rounded-full">{w.remaining}회 남음</span>
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-rose-500 mt-2">이번 달 리포트 작성 후 재등록 안내를 진행해주세요</p>
+        </div>
+      )}
 
       {/* 지난 달 참고 */}
       {lastReport && (
@@ -268,6 +361,74 @@ export default function NewReportPage() {
           {bmiInfo && (
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2"
               dangerouslySetInnerHTML={{ __html: `📏 ${bmiInfo}` }} />
+          )}
+
+          {/* 영양 계산 버튼 */}
+          {weight && height && customer && (
+            <button type="button"
+              onClick={() => {
+                const result = calcNutrition(
+                  parseFloat(weight),
+                  parseFloat(height),
+                  customer.gender,
+                  customer.goal,
+                  bodyFat ? parseFloat(bodyFat) : undefined
+                );
+                setNutrition(result);
+              }}
+              className="w-full py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors">
+              🥗 기초대사량 · 탄단지 자동 계산
+            </button>
+          )}
+
+          {/* 영양 결과 */}
+          {nutrition && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-emerald-800">🥗 맞춤 영양 플랜</p>
+                <button type="button" onClick={() => setNutrition(null)}
+                  className="text-xs text-gray-400 hover:text-gray-600">닫기 ✕</button>
+              </div>
+
+              {/* 칼로리 */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-white rounded-xl p-3 border border-emerald-100">
+                  <p className="text-xs text-gray-400 mb-1">기초대사량</p>
+                  <p className="text-lg font-bold text-emerald-700">{nutrition.bmr}</p>
+                  <p className="text-xs text-gray-400">kcal</p>
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-emerald-100">
+                  <p className="text-xs text-gray-400 mb-1">활동대사량</p>
+                  <p className="text-lg font-bold text-emerald-700">{nutrition.tdee}</p>
+                  <p className="text-xs text-gray-400">kcal</p>
+                </div>
+                <div className="bg-emerald-600 rounded-xl p-3">
+                  <p className="text-xs text-emerald-200 mb-1">목표 칼로리</p>
+                  <p className="text-lg font-bold text-white">{nutrition.targetKcal}</p>
+                  <p className="text-xs text-emerald-200">kcal</p>
+                </div>
+              </div>
+
+              {/* 탄·단·지 */}
+              <div>
+                <p className="text-xs font-semibold text-emerald-700 mb-2">하루 권장 섭취량</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <MacroCard label="탄수화물" value={nutrition.carb}    unit="g" color="bg-amber-400" />
+                  <MacroCard label="단백질"   value={nutrition.protein} unit="g" color="bg-rose-400" />
+                  <MacroCard label="지방"     value={nutrition.fat}     unit="g" color="bg-sky-400" />
+                </div>
+              </div>
+
+              {/* 식단 추천 */}
+              <div>
+                <p className="text-xs font-semibold text-emerald-700 mb-2">추천 식단 예시</p>
+                <div className="space-y-1.5">
+                  {nutrition.mealPlan.map((meal, i) => (
+                    <p key={i} className="text-xs text-gray-700 bg-white rounded-lg px-3 py-2 border border-emerald-100">{meal}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
@@ -330,13 +491,30 @@ export default function NewReportPage() {
                 </Field>
               </div>
               {total > 0 && (
-                <div className="bg-purple-50 rounded-xl p-3">
+                <div className={`rounded-xl p-3 ${
+                  p.remainingSessions && parseInt(p.remainingSessions) <= 5
+                    ? 'bg-rose-50 border border-rose-200'
+                    : 'bg-purple-50'
+                }`}>
                   <div className="flex justify-between text-xs text-gray-500 mb-1.5">
                     <span>진행률</span>
-                    <span className="font-semibold text-purple-600">{p.currentSession}회 완료 · {p.remainingSessions}회 남음</span>
+                    <span className={`font-semibold ${
+                      p.remainingSessions && parseInt(p.remainingSessions) <= 5
+                        ? 'text-rose-600'
+                        : 'text-purple-600'
+                    }`}>
+                      {p.currentSession}회 완료 · {p.remainingSessions}회 남음
+                      {p.remainingSessions && parseInt(p.remainingSessions) <= 5 && (
+                        <span className="ml-2 bg-rose-500 text-white text-xs px-1.5 py-0.5 rounded-full">재등록 필요</span>
+                      )}
+                    </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bava-gradient h-2 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                    <div className={`h-2 rounded-full transition-all ${
+                      p.remainingSessions && parseInt(p.remainingSessions) <= 5
+                        ? 'bg-rose-400'
+                        : 'bava-gradient'
+                    }`} style={{ width: `${progress}%` }} />
                   </div>
                 </div>
               )}
@@ -547,6 +725,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-gray-700">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function MacroCard({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
+  return (
+    <div className="bg-white rounded-xl p-3 border border-emerald-100 text-center">
+      <div className={`w-3 h-3 rounded-full ${color} mx-auto mb-1`} />
+      <p className="text-xs text-gray-400 mb-1">{label}</p>
+      <p className="text-lg font-bold text-gray-800">{value}</p>
+      <p className="text-xs text-gray-400">{unit}</p>
     </div>
   );
 }
