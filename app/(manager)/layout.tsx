@@ -1,21 +1,8 @@
-'use client';
-import { usePathname } from 'next/navigation';
-
 /**
- * 매니저 전용 헤더 + 레이아웃 래퍼
- * - /share/* 경로: 헤더 숨김 + 풀스크린 레이아웃
- * - 그 외: 매니저 헤더 표시 + 최대 너비 제한 레이아웃
+ * 매니저 전용 레이아웃
+ * 헤더(홈/고객목록/신규등록) + 콘텐츠 래퍼 포함
  */
-export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const isShare = pathname.startsWith('/share');
-
-  if (isShare) {
-    // 공유 링크 페이지: 헤더 없음, 풀스크린
-    return <>{children}</>;
-  }
-
-  // 매니저 페이지: 헤더 + 콘텐츠 래퍼
+export default function ManagerLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <header className="bava-gradient text-white shadow-lg no-print">
