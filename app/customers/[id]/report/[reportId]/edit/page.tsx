@@ -150,6 +150,7 @@ export default function EditReportPage() {
   const [monthlyNote,  setMonthlyNote]  = useState('');
   const [aiFeedback,   setAiFeedback]   = useState('');
   const [aiDirection,  setAiDirection]  = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   const [programs, setPrograms] = useState<Record<ProgramType, ProgramState>>({
     pilatesPt:   initProgramState(),
@@ -205,6 +206,53 @@ export default function EditReportPage() {
       ...prev,
       [type]: { ...prev[type], inch: { ...prev[type].inch, [key]: val } },
     }));
+
+  // AI 피드백 자동 생성
+  const handleGenerateAi = async () => {
+    if (!customer) return alert('고객 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+    if (!weight) return alert('체중 정보가 필요합니다. 측정 데이터를 먼저 입력해주세요.');
+    setAiGenerating(true);
+    try {
+      const selectedTypes = PROGRAM_TYPES.filter(t => programs[t].selected);
+      const reportPrograms = selectedTypes.map(type => {
+        const p = programs[type];
+        return {
+          programType:  type,
+          programLabel: PROGRAM_LABELS[type],
+          currentSession:    p.currentSession    ? parseInt(p.currentSession)    : undefined,
+          remainingSessions: p.remainingSessions ? parseInt(p.remainingSessions) : undefined,
+          beforeFrontUrl: p.photos['beforeFrontUrl'] || undefined,
+          beforeSideUrl:  p.photos['beforeSideUrl']  || undefined,
+          beforeBackUrl:  p.photos['beforeBackUrl']  || undefined,
+          afterFrontUrl:  p.photos['afterFrontUrl']  || undefined,
+          afterSideUrl:   p.photos['afterSideUrl']   || undefined,
+          afterBackUrl:   p.photos['afterBackUrl']   || undefined,
+        };
+      });
+      const reportObj = {
+        reportMonth,
+        weight:     weight     ? parseFloat(weight)     : undefined,
+        bodyFat:    bodyFat    ? parseFloat(bodyFat)    : undefined,
+        muscleMass: muscleMass ? parseFloat(muscleMass) : undefined,
+        programs:   reportPrograms,
+        personality,
+        monthlyNote,
+      };
+      const res = await fetch('/api/ai-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer, report: reportObj, allReports: [], mode: 'monthly' }),
+      });
+      if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+      const data = await res.json();
+      if (data.feedback)  setAiFeedback(data.feedback);
+      if (data.direction) setAiDirection(data.direction);
+    } catch (err) {
+      alert('AI 생성 실패: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   // 사진 업로드
   const handlePhotoUpload = async (file: File, type: ProgramType, photoKey: string) => {
@@ -607,15 +655,55 @@ export default function EditReportPage() {
 
         {/* ⑤ AI 피드백 */}
         <div className="card space-y-4">
-          <h2 className="font-bold text-gray-700 border-b pb-2">🤖 AI 피드백 &amp; 방향성</h2>
+          {/* 헤더 + 자동생성 버튼 */}
+          <div className="flex items-center justify-between border-b pb-2">
+            <h2 className="font-bold text-gray-700">🤖 AI 피드백 &amp; 방향성</h2>
+            <button
+              type="button"
+              onClick={handleGenerateAi}
+              disabled={aiGenerating}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-all disabled:opacity-60"
+              style={{ background: aiGenerating ? '#9CA3AF' : 'linear-gradient(135deg, #7C3AED, #9333EA)' }}
+            >
+              {aiGenerating ? (
+                <>
+                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                  생성 중...
+                </>
+              ) : (
+                <>✨ AI 자동 생성</>
+              )}
+            </button>
+          </div>
+
+          {/* 생성 중 안내 */}
+          {aiGenerating && (
+            <div className="flex items-center gap-3 bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+              <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-purple-700">AI가 피드백을 생성하고 있어요</p>
+                <p className="text-xs text-purple-500 mt-0.5">고객 데이터와 매니저 메모를 분석 중입니다...</p>
+              </div>
+            </div>
+          )}
+
           <Field label="이번 달 코멘트">
             <textarea value={aiFeedback} onChange={e => setAiFeedback(e.target.value)}
-              rows={5} placeholder="직접 입력하거나 비워두세요" className="input-field resize-none" />
+              rows={5} placeholder={aiGenerating ? 'AI가 생성 중입니다...' : '✨ AI 자동 생성 버튼을 누르거나 직접 입력하세요'}
+              className="input-field resize-none" />
           </Field>
           <Field label="다음 달 방향성">
             <textarea value={aiDirection} onChange={e => setAiDirection(e.target.value)}
-              rows={5} placeholder="직접 입력하거나 비워두세요" className="input-field resize-none" />
+              rows={5} placeholder={aiGenerating ? 'AI가 생성 중입니다...' : '✨ AI 자동 생성 버튼을 누르거나 직접 입력하세요'}
+              className="input-field resize-none" />
           </Field>
+
+          {/* 생성 완료 안내 */}
+          {!aiGenerating && (aiFeedback || aiDirection) && (
+            <p className="text-xs text-purple-500 bg-purple-50 rounded-lg px-3 py-2">
+              💡 AI가 생성한 내용을 직접 수정할 수 있습니다. 수정 후 수정 완료를 눌러 저장하세요.
+            </p>
+          )}
         </div>
 
         {/* 저장 버튼 */}
