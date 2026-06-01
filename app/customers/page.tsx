@@ -17,7 +17,7 @@ export default function CustomersPage() {
   const filtered = customers.filter(c => {
     if (filter === 'active' && c.status !== 'active') return false;
     if (filter === 'ended' && c.status !== 'ended') return false;
-    if (search && !c.name.includes(search) && !c.phone.includes(search) && !c.trainerName.includes(search)) return false;
+    if (search && !(c.name ?? '').includes(search) && !(c.phone ?? '').includes(search) && !(c.trainerName ?? '').includes(search)) return false;
     return true;
   });
 

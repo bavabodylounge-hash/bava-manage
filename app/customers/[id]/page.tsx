@@ -233,7 +233,7 @@ export default function CustomerDetailPage() {
         ) : (
           <div className="space-y-3">
             {[...reports].reverse().map((r) => (
-              <ReportCard key={r.id} report={r}
+              <ReportCard key={r.id} report={r} customerId={id}
                 onDownload={() => handleDownloadMonthlyPDF(r)}
                 onShare={() => handleCopyShareUrl(r.id)} />
             ))}
@@ -279,7 +279,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ReportCard({ report, onDownload, onShare }: { report: MonthlyReport; onDownload: () => void; onShare: () => void }) {
+function ReportCard({ report, customerId, onDownload, onShare }: { report: MonthlyReport; customerId: string; onDownload: () => void; onShare: () => void }) {
   const [open, setOpen] = useState(false);
   const programs = report.programs ?? [];
 
@@ -299,6 +299,11 @@ function ReportCard({ report, onDownload, onShare }: { report: MonthlyReport; on
           {report.aiFeedback && <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">AI ✓</span>}
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`/customers/${customerId}/report/${report.id}/edit`}
+            onClick={e => e.stopPropagation()}
+            className="text-xs text-gray-500 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+            ✏️ 수정
+          </Link>
           <button onClick={e => { e.stopPropagation(); onShare(); }}
             className="text-xs text-green-600 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors flex items-center gap-1">
             🔗 카톡공유
