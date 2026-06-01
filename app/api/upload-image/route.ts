@@ -15,7 +15,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ★ 매 요청마다 새로 config → 타임스탬프 슬라이딩 문제 방지
   cloudinary.config({
     cloud_name: cloudName,
     api_key:    apiKey,
@@ -31,7 +30,6 @@ export async function POST(req: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: '파일이 없습니다.' }, { status: 400 });
     }
-
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json({ error: '파일 크기는 10MB 이하여야 합니다.' }, { status: 400 });
     }
@@ -39,18 +37,20 @@ export async function POST(req: NextRequest) {
     const bytes  = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // 폴더 경로 안전하게 구성
-    const folder = path
-      ? `bava-manager/${path.split('/').slice(0, -1).join('/')}`
-      : 'bava-manager/reports';
+    // ★ 핵심 수정:
+    // timestamp를 upload_stream 옵션으로 전달하면 SDK 내부 서명과 충돌 → 401
+    // 대신 folder + public_id 로 경로 지정, 서명은 SDK가 자동 생성하게 맡김
+    const safePath   = path.replace(/[^a-zA-Z0-9_\-\/]/g, '_');
+    const folder     = 'bava-manager';
+    const public_id  = safePath ? `${folder}/${safePath}` : `${folder}/reports/${Date.now()}`;
 
     const uploadResult = await new Promise<{ secure_url: string }>((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
-          folder,
+          public_id,          // 경로 포함 파일명
           resource_type: 'image',
-          // ★ 서버 측 타임스탬프 사용 → Invalid Signature 방지
-          timestamp: Math.round(Date.now() / 1000),
+          overwrite:     true,
+          // ★ timestamp 절대 넣지 않음 → SDK 자동 생성으로 서명 일치 보장
         },
         (error, result) => {
           if (error || !result) {
