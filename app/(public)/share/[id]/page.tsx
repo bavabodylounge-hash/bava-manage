@@ -51,6 +51,8 @@ export default function ShareReportPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16" style={{ WebkitTextSizeAdjust: '100%' }}>
+      {/* 매니저 헤더 강제 숨김 (route group layout 적용 안 된 경우 방어) */}
+      <style>{`header.bava-gradient { display: none !important; }`}</style>
 
       {/* 헤더 */}
       <div style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #9333EA 100%)' }}
