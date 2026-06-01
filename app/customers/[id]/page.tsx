@@ -2,9 +2,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getCustomer, getCustomerReports, updateCustomer, deleteCustomer } from '@/lib/firestoreClient';
+import { getCustomer, getCustomerReports, updateCustomer, deleteCustomer, updateReport } from '@/lib/firestoreClient';
 import { Customer, MonthlyReport, ReportProgram, PROGRAM_EMOJIS } from '@/types';
-import { generateMonthlyPDF, generateFinalPDF } from '@/lib/pdfGenerator';
+import { generateMonthlyPDF } from '@/lib/pdfGenerator';
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -12,8 +12,6 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [reports, setReports] = useState<MonthlyReport[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generatingFinal, setGeneratingFinal] = useState(false);
-  const [finalAI, setFinalAI] = useState<{ summary: string; recommendation: string } | null>(null);
   const [showEndModal, setShowEndModal] = useState(false);
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
 
@@ -38,30 +36,6 @@ export default function CustomerDetailPage() {
     if (!confirm(`${customer?.name} 고객을 삭제하시겠습니까? 모든 리포트도 함께 삭제됩니다.`)) return;
     await deleteCustomer(id);
     router.push('/customers');
-  };
-
-  const handleGenerateFinalReport = async () => {
-    if (!customer || reports.length === 0) return alert('리포트 데이터가 없습니다.');
-    setGeneratingFinal(true);
-    try {
-      const res = await fetch('/api/ai-feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customer, allReports: reports, mode: 'final' }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setFinalAI(data);
-    } catch (err) {
-      alert('AI 생성 오류: ' + err);
-    } finally {
-      setGeneratingFinal(false);
-    }
-  };
-
-  const handleDownloadFinalPDF = async () => {
-    if (!customer || !finalAI) return;
-    await generateFinalPDF(customer, reports, finalAI.summary, finalAI.recommendation);
   };
 
   const handleDownloadMonthlyPDF = async (report: MonthlyReport) => {
@@ -172,40 +146,6 @@ export default function CustomerDetailPage() {
           )}
         </div>
 
-        {/* 종합 AI 리포트 */}
-        <div className="card space-y-3">
-          <h2 className="font-bold text-gray-700 border-b pb-2">🤖 종합 AI 리포트</h2>
-          {finalAI ? (
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-semibold text-purple-700 mb-1">📝 총평</p>
-                <p className="text-sm text-gray-700 bg-purple-50 p-3 rounded-lg whitespace-pre-wrap">{finalAI.summary}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-green-700 mb-1">🚀 향후 방향</p>
-                <p className="text-sm text-gray-700 bg-green-50 p-3 rounded-lg whitespace-pre-wrap">{finalAI.recommendation}</p>
-              </div>
-              <button onClick={handleDownloadFinalPDF}
-                className="w-full py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors">
-                📄 종합 리포트 PDF 저장
-              </button>
-            </div>
-          ) : (
-            <div className="text-center py-6 space-y-3">
-              <p className="text-gray-400 text-sm">
-                {reports.length === 0
-                  ? '리포트가 없어 종합 분석을 생성할 수 없습니다'
-                  : `${reports.length}개월 데이터로 AI 종합 분석을 생성합니다`}
-              </p>
-              <button
-                onClick={handleGenerateFinalReport}
-                disabled={reports.length === 0 || generatingFinal}
-                className="w-full py-2 bava-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50 hover:shadow-md transition-all">
-                {generatingFinal ? '🤖 AI 분석 중...' : '🤖 AI 종합 분석 생성'}
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* 체중 변화 그래프 (간단) */}
@@ -233,9 +173,15 @@ export default function CustomerDetailPage() {
         ) : (
           <div className="space-y-3">
             {[...reports].reverse().map((r) => (
-              <ReportCard key={r.id} report={r} customerId={id}
+              <ReportCard key={r.id} report={r} customerId={id} customer={customer}
+                allReports={reports}
                 onDownload={() => handleDownloadMonthlyPDF(r)}
-                onShare={() => handleCopyShareUrl(r.id)} />
+                onShare={() => handleCopyShareUrl(r.id)}
+                onAiSaved={(reportId, feedback, direction) => {
+                  setReports(prev => prev.map(rp =>
+                    rp.id === reportId ? { ...rp, aiFeedback: feedback, aiDirection: direction } : rp
+                  ));
+                }} />
             ))}
           </div>
         )}
@@ -279,75 +225,248 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ReportCard({ report, customerId, onDownload, onShare }: { report: MonthlyReport; customerId: string; onDownload: () => void; onShare: () => void }) {
+function ReportCard({
+  report, customerId, customer, allReports, onDownload, onShare, onAiSaved,
+}: {
+  report: MonthlyReport;
+  customerId: string;
+  customer: Customer | null;
+  allReports: MonthlyReport[];
+  onDownload: () => void;
+  onShare: () => void;
+  onAiSaved: (reportId: string, feedback: string, direction: string) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState(report.aiFeedback || '');
+  const [aiDirection, setAiDirection] = useState(report.aiDirection || '');
+  const [aiSaving, setAiSaving] = useState(false);
   const programs = report.programs ?? [];
 
+  // AI 평가 버튼 클릭 시 - 기존 데이터 있으면 바로 모달, 없으면 자동 생성
+  const handleAiEvaluation = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowAiModal(true);
+    if (!aiFeedback && !aiDirection) {
+      // 자동 생성
+      await generateAi();
+    }
+  };
+
+  const generateAi = async () => {
+    if (!customer) return;
+    setAiLoading(true);
+    try {
+      const res = await fetch('/api/ai-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer, report, allReports, mode: 'monthly' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setAiFeedback(data.feedback || '');
+      setAiDirection(data.direction || '');
+    } catch (err) {
+      alert('AI 생성 오류: ' + err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSaveAi = async () => {
+    setAiSaving(true);
+    try {
+      await updateReport(report.id, { aiFeedback, aiDirection });
+      onAiSaved(report.id, aiFeedback, aiDirection);
+      setShowAiModal(false);
+    } catch (err) {
+      alert('저장 실패: ' + err);
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
   return (
-    <div className="border border-gray-100 rounded-xl overflow-hidden">
-      {/* 헤더 행 */}
-      <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setOpen(o => !o)}>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-sm font-bold text-purple-700">{report.reportMonth}</span>
-          <span className="text-sm text-gray-700">{report.weight}kg</span>
-          {/* 프로그램 태그 (복수) */}
-          {programs.map(prog => (
-            <span key={prog.programType} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
-              {PROGRAM_EMOJIS[prog.programType]} {prog.programLabel}
-            </span>
-          ))}
-          {report.aiFeedback && <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">AI ✓</span>}
+    <>
+      <div className="border border-gray-100 rounded-xl overflow-hidden">
+        {/* 헤더 행 */}
+        <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setOpen(o => !o)}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-bold text-purple-700">{report.reportMonth}</span>
+            <span className="text-sm text-gray-700">{report.weight}kg</span>
+            {programs.map(prog => (
+              <span key={prog.programType} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+                {PROGRAM_EMOJIS[prog.programType]} {prog.programLabel}
+              </span>
+            ))}
+            {(aiFeedback || aiDirection) && (
+              <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">AI ✓</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href={`/customers/${customerId}/report/${report.id}/edit`}
+              onClick={e => e.stopPropagation()}
+              className="text-xs text-gray-500 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+              ✏️ 수정
+            </Link>
+            {/* AI 평가 버튼 */}
+            <button
+              onClick={handleAiEvaluation}
+              className="text-xs text-white bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 font-semibold">
+              🤖 {(aiFeedback || aiDirection) ? 'AI 평가 보기' : 'AI 평가 생성'}
+            </button>
+            <button onClick={e => { e.stopPropagation(); onShare(); }}
+              className="text-xs text-green-600 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors">
+              🔗 카톡
+            </button>
+            <button onClick={e => { e.stopPropagation(); onDownload(); }}
+              className="text-xs text-purple-600 border border-purple-200 px-2 py-1 rounded-lg hover:bg-purple-50 transition-colors">
+              PDF
+            </button>
+            <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href={`/customers/${customerId}/report/${report.id}/edit`}
-            onClick={e => e.stopPropagation()}
-            className="text-xs text-gray-500 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
-            ✏️ 수정
-          </Link>
-          <button onClick={e => { e.stopPropagation(); onShare(); }}
-            className="text-xs text-green-600 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors flex items-center gap-1">
-            🔗 카톡공유
-          </button>
-          <button onClick={e => { e.stopPropagation(); onDownload(); }}
-            className="text-xs text-purple-600 border border-purple-200 px-2 py-1 rounded-lg hover:bg-purple-50 transition-colors">
-            PDF
-          </button>
-          <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
-        </div>
+
+        {/* 펼침 영역 */}
+        {open && (
+          <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-3">
+            {programs.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-2">프로그램 정보가 없습니다.</p>
+            ) : (
+              programs.map(prog => (
+                <ProgramSection key={prog.programType} prog={prog} />
+              ))
+            )}
+            {report.monthlyNote && (
+              <div>
+                <p className="text-xs text-gray-500 font-medium">📝 메모</p>
+                <p className="text-sm text-gray-700 mt-1">{report.monthlyNote}</p>
+              </div>
+            )}
+            {/* 매니저 코멘트 (personality + monthlyNote 통합 표시) */}
+            {(report.personality || report.monthlyNote) && (aiFeedback || aiDirection) && (
+              <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-600">📝 매니저 코멘트</p>
+                {report.personality && (
+                  <p className="text-xs text-gray-500">이달 성향: {report.personality}</p>
+                )}
+                {report.monthlyNote && (
+                  <p className="text-xs text-gray-500">특이사항: {report.monthlyNote}</p>
+                )}
+              </div>
+            )}
+            {aiFeedback && (
+              <div>
+                <p className="text-xs text-purple-600 font-semibold">🤖 AI 매니저 코멘트</p>
+                <p className="text-sm text-gray-700 mt-1 bg-purple-50 p-3 rounded-lg whitespace-pre-wrap">{aiFeedback}</p>
+              </div>
+            )}
+            {aiDirection && (
+              <div>
+                <p className="text-xs text-green-600 font-semibold">🚀 다음 달 방향성</p>
+                <p className="text-sm text-gray-700 mt-1 bg-green-50 p-3 rounded-lg whitespace-pre-wrap">{aiDirection}</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* 펼침 영역 */}
-      {open && (
-        <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-3">
-          {programs.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-2">프로그램 정보가 없습니다.</p>
-          ) : (
-            programs.map(prog => (
-              <ProgramSection key={prog.programType} prog={prog} />
-            ))
-          )}
+      {/* AI 평가 모달 */}
+      {showAiModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4 sm:items-center">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl">
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  🤖 {report.reportMonth} AI 평가
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">매니저 코멘트 + AI 자동 분석</p>
+              </div>
+              <button onClick={() => setShowAiModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
 
-          {report.monthlyNote && (
-            <div>
-              <p className="text-xs text-gray-500 font-medium">📝 메모</p>
-              <p className="text-sm text-gray-700 mt-1">{report.monthlyNote}</p>
+            {/* 모달 내용 */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {aiLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                  <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-purple-600 font-semibold">AI가 리포트를 분석하고 있어요...</p>
+                  <p className="text-xs text-gray-400 text-center">
+                    사진과 측정 데이터를 분석하여<br/>매니저 코멘트와 방향성을 생성 중입니다
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* 매니저 코멘트 (기존 저장 데이터) */}
+                  {(report.personality || report.monthlyNote) && (
+                    <div>
+                      <p className="text-xs font-bold text-gray-700 mb-2">📝 매니저 코멘트</p>
+                      <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                        {report.personality && (
+                          <div>
+                            <p className="text-xs text-gray-400 font-medium">이달 고객 성향</p>
+                            <p className="text-sm text-gray-700 mt-0.5">{report.personality}</p>
+                          </div>
+                        )}
+                        {report.monthlyNote && (
+                          <div>
+                            <p className="text-xs text-gray-400 font-medium">특이사항 / 관리 포인트</p>
+                            <p className="text-sm text-gray-700 mt-0.5">{report.monthlyNote}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI 매니저 코멘트 */}
+                  {aiFeedback && (
+                    <div>
+                      <p className="text-xs font-bold text-purple-700 mb-2">🤖 AI 매니저 코멘트</p>
+                      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiFeedback}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 다음 달 방향성 */}
+                  {aiDirection && (
+                    <div>
+                      <p className="text-xs font-bold text-green-700 mb-2">🎯 다음 달 방향성</p>
+                      <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{aiDirection}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!aiFeedback && !aiDirection && (
+                    <p className="text-center text-gray-400 text-sm py-8">AI 평가를 생성해주세요</p>
+                  )}
+                </>
+              )}
             </div>
-          )}
-          {report.aiFeedback && (
-            <div>
-              <p className="text-xs text-purple-600 font-semibold">🤖 AI 코멘트</p>
-              <p className="text-sm text-gray-700 mt-1 bg-purple-50 p-3 rounded-lg whitespace-pre-wrap">{report.aiFeedback}</p>
+
+            {/* 모달 하단 버튼 */}
+            <div className="px-6 py-4 border-t flex gap-3">
+              <button
+                onClick={generateAi}
+                disabled={aiLoading}
+                className="flex-1 py-2.5 border border-purple-300 text-purple-600 rounded-xl text-sm font-semibold hover:bg-purple-50 disabled:opacity-50 transition-colors">
+                🔄 재생성
+              </button>
+              <button
+                onClick={handleSaveAi}
+                disabled={aiLoading || aiSaving || (!aiFeedback && !aiDirection)}
+                className="flex-[2] py-2.5 bava-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50 hover:shadow-md transition-all">
+                {aiSaving ? '저장 중...' : '💾 리포트에 저장'}
+              </button>
             </div>
-          )}
-          {report.aiDirection && (
-            <div>
-              <p className="text-xs text-green-600 font-semibold">🚀 다음 달 방향성</p>
-              <p className="text-sm text-gray-700 mt-1 bg-green-50 p-3 rounded-lg whitespace-pre-wrap">{report.aiDirection}</p>
-            </div>
-          )}
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
