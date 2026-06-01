@@ -56,6 +56,22 @@ export interface MonthlyReport {
   aiFeedback?: string;
   aiDirection?: string;
   createdAt: string;
+
+  // 영양 계산 결과 (선택 저장)
+  nutrition?: NutritionInfo;
+}
+
+export interface NutritionInfo {
+  bmr: number;           // 기초대사량
+  tdee: number;          // 활동대사량
+  targetKcal: number;    // 목표 칼로리
+  carb: number;          // 탄수화물 (g)
+  protein: number;       // 단백질 (g)
+  fat: number;           // 지방 (g)
+  targetWeightLoss?: number; // 목표 감량 kg (입력 시)
+  weeklyDeficit?: number;    // 주간 칼로리 적자
+  weeksToGoal?: number;      // 목표 달성 예상 주수
+  mealPlan: string[];    // 식단 추천
 }
 
 export interface ReportProgram {

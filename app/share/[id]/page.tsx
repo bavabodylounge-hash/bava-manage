@@ -121,6 +121,85 @@ export default function ShareReportPage() {
           </div>
         )}
 
+        {/* 맞춤 영양 플랜 (탄단지) */}
+        {report.nutrition && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 space-y-4">
+            <h2 className="font-bold text-gray-800 text-base flex items-center gap-2">
+              <span>🥗</span> 맞춤 영양 플랜
+            </h2>
+
+            {/* 목표 감량 배너 */}
+            {report.nutrition.targetWeightLoss && (
+              <div style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}
+                className="rounded-xl px-4 py-3 text-white">
+                <p className="text-sm font-bold">🎯 목표 감량: {report.nutrition.targetWeightLoss}kg</p>
+                <div className="flex gap-4 mt-1 text-xs text-emerald-100">
+                  <span>일일 칼로리 부족: {Math.round(report.nutrition.tdee - report.nutrition.targetKcal)}kcal</span>
+                  {report.nutrition.weeksToGoal && <span>예상 기간: 약 {report.nutrition.weeksToGoal}주</span>}
+                </div>
+              </div>
+            )}
+
+            {/* 칼로리 3박스 */}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs text-gray-400 mb-1">기초대사량</p>
+                <p className="text-xl font-bold text-gray-700">{report.nutrition.bmr}</p>
+                <p className="text-xs text-gray-400">kcal</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs text-gray-400 mb-1">활동대사량</p>
+                <p className="text-xl font-bold text-gray-700">{report.nutrition.tdee}</p>
+                <p className="text-xs text-gray-400">kcal</p>
+              </div>
+              <div className="rounded-xl p-3" style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}>
+                <p className="text-xs text-emerald-100 mb-1">목표 칼로리</p>
+                <p className="text-xl font-bold text-white">{report.nutrition.targetKcal}</p>
+                <p className="text-xs text-emerald-200">kcal</p>
+              </div>
+            </div>
+
+            {/* 탄단지 */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-2">하루 권장 섭취량</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-amber-50 rounded-xl p-3 text-center">
+                  <div className="w-3 h-3 rounded-full bg-amber-400 mx-auto mb-1" />
+                  <p className="text-xs text-gray-500 mb-1">탄수화물</p>
+                  <p className="text-xl font-bold text-gray-800">{report.nutrition.carb}</p>
+                  <p className="text-xs text-gray-400">g</p>
+                </div>
+                <div className="bg-rose-50 rounded-xl p-3 text-center">
+                  <div className="w-3 h-3 rounded-full bg-rose-400 mx-auto mb-1" />
+                  <p className="text-xs text-gray-500 mb-1">단백질</p>
+                  <p className="text-xl font-bold text-gray-800">{report.nutrition.protein}</p>
+                  <p className="text-xs text-gray-400">g</p>
+                </div>
+                <div className="bg-sky-50 rounded-xl p-3 text-center">
+                  <div className="w-3 h-3 rounded-full bg-sky-400 mx-auto mb-1" />
+                  <p className="text-xs text-gray-500 mb-1">지방</p>
+                  <p className="text-xl font-bold text-gray-800">{report.nutrition.fat}</p>
+                  <p className="text-xs text-gray-400">g</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 식단 추천 */}
+            {report.nutrition.mealPlan && report.nutrition.mealPlan.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-2">추천 식단 예시</p>
+                <div className="space-y-2">
+                  {report.nutrition.mealPlan.map((meal, i) => (
+                    <p key={i} className="text-xs text-gray-700 bg-emerald-50 rounded-xl px-3 py-2.5">
+                      {meal}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 다음 달 방향성 */}
         {report.aiDirection && (
           <div className="bg-white rounded-2xl shadow-sm p-5 space-y-3">

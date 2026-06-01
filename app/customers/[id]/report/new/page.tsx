@@ -37,6 +37,9 @@ interface NutritionResult {
   carb: number;      // 탄수화물 (g)
   protein: number;   // 단백질 (g)
   fat: number;       // 지방 (g)
+  targetWeightLoss?: number; // 목표 감량 kg
+  weeklyDeficit?: number;    // 주간 칼로리 적자
+  weeksToGoal?: number;      // 목표 달성 예상 주
   mealPlan: string[];// 식단 추천
 }
 
@@ -45,23 +48,42 @@ function calcNutrition(
   heightCm: number,
   gender: 'female' | 'male',
   goal: string,
-  bodyFatPct?: number
+  bodyFatPct?: number,
+  targetWeightLoss?: number  // ★ 목표 감량 kg 추가
 ): NutritionResult {
-  // Mifflin-St Jeor 공식
+  // Mifflin-St Jeor 공식 (나이 30 기본값)
   const bmr = gender === 'female'
     ? 10 * weightKg + 6.25 * heightCm - 5 * 30 - 161
     : 10 * weightKg + 6.25 * heightCm - 5 * 30 + 5;
 
   const tdee = Math.round(bmr * 1.4); // 가벼운 활동 기준
 
-  // 목표별 칼로리
   const isLoss = goal.includes('감량') || goal.includes('다이어트') || goal.includes('지방');
   const isBulk = goal.includes('근육') || goal.includes('증가');
-  const targetKcal = isLoss ? Math.round(tdee * 0.8) : isBulk ? Math.round(tdee * 1.1) : tdee;
+
+  // ★ 목표 감량 kg 기반 정밀 칼로리 계산
+  let targetKcal: number;
+  let weeklyDeficit: number | undefined;
+  let weeksToGoal: number | undefined;
+
+  if (targetWeightLoss && targetWeightLoss > 0) {
+    // 1kg 지방 ≈ 7,700 kcal, 주 0.5~1kg 감량 권장
+    const weeklyLossKg = Math.min(targetWeightLoss / 12, 0.8); // 12주 분배, 최대 0.8kg/주
+    weeklyDeficit = Math.round(weeklyLossKg * 7700);
+    const dailyDeficit = Math.round(weeklyDeficit / 7);
+    targetKcal = Math.max(tdee - dailyDeficit, gender === 'female' ? 1200 : 1500); // 최소 섭취량 보장
+    weeksToGoal = Math.ceil(targetWeightLoss / weeklyLossKg);
+  } else if (isLoss) {
+    targetKcal = Math.round(tdee * 0.8);
+  } else if (isBulk) {
+    targetKcal = Math.round(tdee * 1.1);
+  } else {
+    targetKcal = tdee;
+  }
 
   // 탄·단·지 비율 (감량: 40/35/25 / 증가: 45/30/25 / 유지: 45/25/30)
   let carbRatio = 0.45, protRatio = 0.25, fatRatio = 0.30;
-  if (isLoss)  { carbRatio = 0.40; protRatio = 0.35; fatRatio = 0.25; }
+  if (isLoss || targetWeightLoss)  { carbRatio = 0.40; protRatio = 0.35; fatRatio = 0.25; }
   if (isBulk)  { carbRatio = 0.45; protRatio = 0.30; fatRatio = 0.25; }
 
   const carb    = Math.round((targetKcal * carbRatio) / 4);
@@ -70,24 +92,28 @@ function calcNutrition(
 
   // 식단 추천
   const mealPlan: string[] = [];
-  if (isLoss) {
-    mealPlan.push('🌅 아침: 닭가슴살 샐러드 + 삶은 달걀 2개 + 방울토마토');
+  if (isLoss || targetWeightLoss) {
+    mealPlan.push('🌅 아침: 닭가슴살 100g + 삶은 달걀 2개 + 방울토마토');
     mealPlan.push('☀️ 점심: 현미밥 반공기 + 두부조림 + 나물 반찬 2가지');
     mealPlan.push('🌙 저녁: 고구마 1개 + 그릭요거트 + 오이·당근 스틱');
-    mealPlan.push('🍎 간식: 아몬드 15알 또는 단백질 쉐이크');
+    mealPlan.push('🍎 간식: 아몬드 15알 또는 단백질 쉐이크 (운동 후)');
+    mealPlan.push('💧 수분: 하루 물 2L 이상 섭취');
   } else if (isBulk) {
-    mealPlan.push('🌅 아침: 귀리오트밀 + 바나나 1개 + 삶은 달걀 3개');
+    mealPlan.push('🌅 아침: 귀리오트밀 100g + 바나나 1개 + 삶은 달걀 3개');
     mealPlan.push('☀️ 점심: 현미밥 1공기 + 닭가슴살 150g + 채소볶음');
     mealPlan.push('🌙 저녁: 고구마 2개 + 두부 반모 + 브로콜리');
-    mealPlan.push('💪 운동 후: 단백질 쉐이크 + 바나나');
+    mealPlan.push('💪 운동 후: 단백질 쉐이크 + 바나나 (30분 이내)');
+    mealPlan.push('🌙 취침 전: 카제인 단백질 or 그릭요거트');
   } else {
     mealPlan.push('🌅 아침: 통곡물빵 2장 + 스크램블에그 + 우유 200ml');
     mealPlan.push('☀️ 점심: 잡곡밥 + 생선구이 + 나물 반찬');
     mealPlan.push('🌙 저녁: 닭가슴살 + 샐러드 + 견과류 한 줌');
     mealPlan.push('🍵 간식: 그릭요거트 or 프로틴바 1개');
+    mealPlan.push('💧 수분: 하루 물 1.5L 이상 섭취');
   }
 
-  return { bmr: Math.round(bmr), tdee, targetKcal, carb, protein, fat, mealPlan };
+  return { bmr: Math.round(bmr), tdee, targetKcal, carb, protein, fat,
+    targetWeightLoss, weeklyDeficit, weeksToGoal, mealPlan };
 }
 
 // 프로그램별 데이터 상태
@@ -111,7 +137,8 @@ export default function NewReportPage() {
   const [saving, setSaving] = useState(false);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
-  const [nutrition, setNutrition] = useState<NutritionResult | null>(null); // "programType_photoKey"
+  const [nutrition, setNutrition] = useState<NutritionResult | null>(null);
+  const [targetWeightLoss, setTargetWeightLoss] = useState(''); // 목표 감량 kg
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const [reportMonth, setReportMonth] = useState(thisMonth);
@@ -261,6 +288,18 @@ export default function NewReportPage() {
         monthlyNote,
         aiFeedback:  aiFeedback  || undefined,
         aiDirection: aiDirection || undefined,
+        // ★ 영양 계산 결과 저장 (계산한 경우에만)
+        nutrition: nutrition ? {
+          bmr: nutrition.bmr,
+          tdee: nutrition.tdee,
+          targetKcal: nutrition.targetKcal,
+          carb: nutrition.carb,
+          protein: nutrition.protein,
+          fat: nutrition.fat,
+          targetWeightLoss: nutrition.targetWeightLoss,
+          weeklyDeficit: nutrition.weeklyDeficit,
+          mealPlan: nutrition.mealPlan,
+        } : undefined,
       });
       router.push(`/customers/${id}`);
     } catch (err) {
@@ -363,22 +402,38 @@ export default function NewReportPage() {
               dangerouslySetInnerHTML={{ __html: `📏 ${bmiInfo}` }} />
           )}
 
-          {/* 영양 계산 버튼 */}
+          {/* 목표 감량 + 영양 계산 버튼 */}
           {weight && height && customer && (
-            <button type="button"
-              onClick={() => {
-                const result = calcNutrition(
-                  parseFloat(weight),
-                  parseFloat(height),
-                  customer.gender,
-                  customer.goal,
-                  bodyFat ? parseFloat(bodyFat) : undefined
-                );
-                setNutrition(result);
-              }}
-              className="w-full py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors">
-              🥗 기초대사량 · 탄단지 자동 계산
-            </button>
+            <div className="space-y-3 border border-emerald-200 rounded-xl p-4 bg-emerald-50/50">
+              <p className="text-xs font-semibold text-emerald-700">🥗 맞춤 영양 플랜 계산</p>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">목표 감량 (선택)</label>
+                  <div className="relative">
+                    <input type="number" step="0.5" min="0.5" max="30" value={targetWeightLoss}
+                      onChange={e => setTargetWeightLoss(e.target.value)}
+                      placeholder="예: 5" className="input-field pr-8" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">kg</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">입력 시 더 정밀한 칼로리 계산</p>
+                </div>
+                <button type="button"
+                  onClick={() => {
+                    const result = calcNutrition(
+                      parseFloat(weight),
+                      parseFloat(height),
+                      customer.gender,
+                      customer.goal,
+                      bodyFat ? parseFloat(bodyFat) : undefined,
+                      targetWeightLoss ? parseFloat(targetWeightLoss) : undefined
+                    );
+                    setNutrition(result);
+                  }}
+                  className="px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors whitespace-nowrap">
+                  자동 계산
+                </button>
+              </div>
+            </div>
           )}
 
           {/* 영양 결과 */}
@@ -389,6 +444,17 @@ export default function NewReportPage() {
                 <button type="button" onClick={() => setNutrition(null)}
                   className="text-xs text-gray-400 hover:text-gray-600">닫기 ✕</button>
               </div>
+
+              {/* 목표 감량 정보 */}
+              {nutrition.targetWeightLoss && (
+                <div className="bg-emerald-600 text-white rounded-xl px-4 py-3 space-y-1">
+                  <p className="text-sm font-bold">🎯 목표 감량: {nutrition.targetWeightLoss}kg</p>
+                  <div className="flex gap-4 text-xs text-emerald-200">
+                    <span>일일 칼로리 부족: {Math.round((nutrition.tdee - nutrition.targetKcal))}kcal</span>
+                    <span>예상 기간: 약 {nutrition.weeksToGoal}주</span>
+                  </div>
+                </div>
+              )}
 
               {/* 칼로리 */}
               <div className="grid grid-cols-3 gap-3 text-center">
