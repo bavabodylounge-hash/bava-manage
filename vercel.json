@@ -1,5 +1,10 @@
 {
-  "deploymentProtection": {
-    "allowedPaths": ["/share/*", "/api/firestore", "/api/ai-feedback"]
-  }
+  "headers": [
+    {
+      "source": "/share/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex" }
+      ]
+    }
+  ]
 }
