@@ -402,9 +402,9 @@ export default function NewReportPage() {
             <Field label="리포트 월 *">
               <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} className="input-field" required />
             </Field>
-            <Field label={`체중 (kg) *${weightChange !== null ? ` → ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)}kg` : ''}`}>
+            <Field label={`체중 (kg) (선택)${weightChange !== null ? ` → ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)}kg` : ''}`}>
               <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)}
-                placeholder="예: 58.5" className="input-field" required />
+                placeholder="예: 58.5 (선택 입력)" className="input-field" />
             </Field>
           </div>
           <div className="grid grid-cols-3 gap-4">

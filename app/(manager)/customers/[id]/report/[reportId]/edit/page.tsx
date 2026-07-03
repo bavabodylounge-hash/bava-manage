@@ -397,10 +397,10 @@ export default function EditReportPage() {
                 onChange={e => setReportMonth(e.target.value)}
                 className="input-field" required />
             </Field>
-            <Field label="체중 (kg) *">
+            <Field label="체중 (kg) (선택)">
               <input type="number" step="0.1" value={weight}
                 onChange={e => setWeight(e.target.value)}
-                placeholder="예: 58.5" className="input-field" required />
+                placeholder="예: 58.5 (선택 입력)" className="input-field" />
             </Field>
           </div>
           <div className="grid grid-cols-3 gap-4">
