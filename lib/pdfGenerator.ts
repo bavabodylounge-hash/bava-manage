@@ -131,7 +131,8 @@ export async function generateMonthlyPDF(
   const prevReport = allReports.length > 1
     ? allReports.find((_, i) => allReports[i + 1]?.id === report.id)
     : null;
-  const weightChange = prevReport ? report.weight - prevReport.weight : null;
+  const weightChange = (prevReport && report.weight != null && prevReport.weight != null)
+    ? report.weight - prevReport.weight : null;
 
   // ── 헤더 ──
   drawHeader(doc,
@@ -329,7 +330,8 @@ export async function generateFinalPDF(
   const pw = doc.internal.pageSize.getWidth();
   const firstReport = reports[0];
   const lastReport = reports[reports.length - 1];
-  const weightChange = lastReport && firstReport ? lastReport.weight - firstReport.weight : 0;
+  const weightChange = (lastReport && firstReport && lastReport.weight != null && firstReport.weight != null)
+    ? lastReport.weight - firstReport.weight : 0;
 
   // ── 페이지 1: 커버 ──────────────────────────────────
   setFill(doc, C.purple);
@@ -471,7 +473,7 @@ export async function generateFinalPDF(
     }
     y = drawSectionTitle(doc, `📋  ${r.reportMonth}`, y);
     const prevR = reports.find((_, i) => reports[i + 1]?.id === r.id);
-    const chg = prevR ? r.weight - prevR.weight : null;
+    const chg = (prevR && r.weight != null && prevR.weight != null) ? r.weight - prevR.weight : null;
     const chgStr = chg !== null ? ` (${chg > 0 ? '+' : ''}${chg.toFixed(1)}kg)` : '';
     y = drawInfoRow(doc, '체중', `${r.weight}kg${chgStr}`, leftX, y, pw / 2 - 10);
     if (r.bodyFat) drawInfoRow(doc, '체지방률', `${r.bodyFat}%`, midX, y - 6.5, pw / 2 - 10);

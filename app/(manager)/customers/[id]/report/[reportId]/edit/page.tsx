@@ -214,7 +214,7 @@ export default function EditReportPage() {
   // AI 피드백 자동 생성
   const handleGenerateAi = async () => {
     if (!customer) return alert('고객 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
-    if (!weight) return alert('체중 정보가 필요합니다. 측정 데이터를 먼저 입력해주세요.');
+
     setAiGenerating(true);
     try {
       const selectedTypes = PROGRAM_TYPES.filter(t => programs[t].selected);
@@ -282,7 +282,6 @@ export default function EditReportPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const selectedTypes = PROGRAM_TYPES.filter(t => programs[t].selected);
-    if (!weight) return alert('체중은 필수입니다.');
     if (selectedTypes.length === 0) return alert('프로그램을 최소 1개 선택해주세요.');
     setSaving(true);
     setSaveError(null);
@@ -317,7 +316,7 @@ export default function EditReportPage() {
 
       const patch: Partial<MonthlyReport> = {
         reportMonth,
-        weight:      parseFloat(weight),
+        weight:      weight     ? parseFloat(weight)     : undefined,
         height:      height     ? parseFloat(height)     : undefined,
         bodyFat:     bodyFat    ? parseFloat(bodyFat)    : undefined,
         muscleMass:  muscleMass ? parseFloat(muscleMass) : undefined,

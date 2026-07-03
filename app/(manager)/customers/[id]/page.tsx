@@ -579,14 +579,17 @@ function ProgramSection({ prog }: { prog: ReportProgram }) {
 }
 
 function WeightChart({ reports }: { reports: MonthlyReport[] }) {
-  const weights = reports.map(r => r.weight);
+  // 체중 없는 리포트 제외
+  const validReports = reports.filter(r => r.weight != null);
+  if (validReports.length === 0) return null;
+  const weights = validReports.map(r => r.weight as number);
   const min = Math.min(...weights) - 2;
   const max = Math.max(...weights) + 2;
   const range = max - min;
   const w = 600; const h = 120;
-  const pts = reports.map((r, i) => {
-    const x = (i / (reports.length - 1)) * (w - 40) + 20;
-    const y = h - 20 - ((r.weight - min) / range) * (h - 40);
+  const pts = validReports.map((r, i) => {
+    const x = (i / Math.max(validReports.length - 1, 1)) * (w - 40) + 20;
+    const y = h - 20 - (((r.weight as number) - min) / range) * (h - 40);
     return { x, y, w: r.weight, m: r.reportMonth };
   });
   const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');

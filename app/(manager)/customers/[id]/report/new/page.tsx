@@ -220,7 +220,7 @@ export default function NewReportPage() {
 
   // AI 생성
   const handleGenerateAI = async () => {
-    if (!customer || !weight) return alert('체중을 먼저 입력해주세요.');
+    if (!customer) return alert('고객 정보를 불러올 수 없습니다.');
     setGeneratingAI(true);
     try {
       const res = await fetch('/api/ai-feedback', {
@@ -228,7 +228,7 @@ export default function NewReportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer,
-          report: { weight: parseFloat(weight), bodyFat: bodyFat ? parseFloat(bodyFat) : undefined, personality, monthlyNote },
+          report: { weight: weight ? parseFloat(weight) : undefined, bodyFat: bodyFat ? parseFloat(bodyFat) : undefined, personality, monthlyNote },
           allReports,
           mode: 'monthly',
         }),
@@ -275,7 +275,7 @@ export default function NewReportPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customer || !weight) return alert('체중은 필수입니다.');
+    if (!customer) return alert('고객 정보를 불러올 수 없습니다.');
     if (selectedTypes.length === 0) return alert('프로그램을 최소 1개 선택해주세요.');
 
     setSaving(true);
@@ -286,7 +286,7 @@ export default function NewReportPage() {
       customerId:   id,
       customerName: customer.name,
       reportMonth,
-      weight:      parseFloat(weight),
+      weight:      weight     ? parseFloat(weight)     : undefined,
       height:      height     ? parseFloat(height)     : undefined,
       bodyFat:     bodyFat    ? parseFloat(bodyFat)    : undefined,
       muscleMass:  muscleMass ? parseFloat(muscleMass) : undefined,
@@ -332,7 +332,7 @@ export default function NewReportPage() {
   if (!customer) return <LoadingSpinner />;
 
   const lastReport = allReports.length > 0 ? allReports[allReports.length - 1] : null;
-  const weightChange = lastReport && weight ? parseFloat(weight) - lastReport.weight : null;
+  const weightChange = lastReport && weight && lastReport.weight != null ? parseFloat(weight) - lastReport.weight : null;
 
   let bmiInfo = '';
   if (height && weight) {
@@ -722,7 +722,7 @@ export default function NewReportPage() {
               <h2 className="font-bold text-gray-700">🤖 AI 피드백 &amp; 방향성</h2>
               <p className="text-xs text-gray-400 mt-0.5">측정 데이터 기반 자동 생성</p>
             </div>
-            <button type="button" onClick={handleGenerateAI} disabled={generatingAI || !weight}
+            <button type="button" onClick={handleGenerateAI} disabled={generatingAI}
               className="px-4 py-2 bava-gradient text-white rounded-xl text-sm font-semibold disabled:opacity-50 hover:shadow-md transition-all">
               {generatingAI ? (
                 <span className="flex items-center gap-1.5">

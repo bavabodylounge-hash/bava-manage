@@ -43,7 +43,7 @@ export interface MonthlyReport {
   customerId: string;
   customerName: string;
   reportMonth: string;      // YYYY-MM
-  weight: number;
+  weight?: number;          // 미측정 시 미입력 가능
   height?: number;
   bodyFat?: number;
   muscleMass?: number;

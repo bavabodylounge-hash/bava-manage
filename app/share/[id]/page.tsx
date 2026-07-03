@@ -50,8 +50,9 @@ export default function ShareReportPage() {
 
   const programs = report.programs ?? [];
 
-  // 히스토리 데이터 (최대 6개월, 날짜순)
+  // 히스토리 데이터 (체중 있는 것만, 최대 6개월, 날짜순)
   const historyData = allReports
+    .filter(r => r.weight != null)
     .sort((a, b) => a.reportMonth.localeCompare(b.reportMonth))
     .slice(-6);
 
@@ -101,10 +102,13 @@ export default function ShareReportPage() {
           </h2>
 
           <div className="grid grid-cols-3 gap-3">
-            <StatBox label="체중" value={`${report.weight}`} unit="kg" color="purple" />
-            {report.bodyFat   != null && <StatBox label="체지방률" value={`${report.bodyFat}`}   unit="%" color="orange" />}
-            {report.muscleMass != null && <StatBox label="근육량"  value={`${report.muscleMass}`} unit="kg" color="green" />}
+            {report.weight    != null && <StatBox label="체중"    value={`${report.weight}`}     unit="kg" color="purple" />}
+            {report.bodyFat   != null && <StatBox label="체지방률" value={`${report.bodyFat}`}    unit="%" color="orange" />}
+            {report.muscleMass != null && <StatBox label="근육량" value={`${report.muscleMass}`} unit="kg" color="green" />}
           </div>
+          {report.weight == null && report.bodyFat == null && report.muscleMass == null && (
+            <p className="text-sm text-gray-400 text-center py-2">이번 달 인바디 측정 미진행</p>
+          )}
 
           {bmiText && (
             <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700">
@@ -263,7 +267,7 @@ function MissionCard({ mission, name }: { mission: string; name: string }) {
 
 /* ──────────────── 히스토리 그래프 ──────────────── */
 function HistoryGraph({ reports, currentReportId }: { reports: MonthlyReport[]; currentReportId: string }) {
-  const weights  = reports.map(r => r.weight);
+  const weights  = reports.map(r => r.weight as number); // historyData는 weight!=null 필터됨
   const bodyFats = reports.map(r => r.bodyFat);
   const hasBodyFat = bodyFats.some(v => v != null);
 
@@ -287,7 +291,7 @@ function HistoryGraph({ reports, currentReportId }: { reports: MonthlyReport[]; 
 
   // 체중 꺾은선 path
   const weightPath = reports.map((r, i) =>
-    `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toYW(r.weight).toFixed(1)}`
+    `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toYW(r.weight as number).toFixed(1)}`
   ).join(' ');
 
   // 체지방 꺾은선 path
@@ -299,8 +303,8 @@ function HistoryGraph({ reports, currentReportId }: { reports: MonthlyReport[]; 
   }, '');
 
   // 첫 → 마지막 체중 변화
-  const first = reports[0].weight;
-  const last  = reports[reports.length - 1].weight;
+  const first = reports[0].weight as number;
+  const last  = reports[reports.length - 1].weight as number;
   const diff  = last - first;
   const totalMonths = reports.length;
 
@@ -361,13 +365,14 @@ function HistoryGraph({ reports, currentReportId }: { reports: MonthlyReport[]; 
           {/* 체중 점 */}
           {reports.map((r, i) => {
             const isCurrent = r.id === currentReportId;
+            const cy = toYW(r.weight as number);
             return (
               <g key={i}>
-                <circle cx={toX(i)} cy={toYW(r.weight)} r={isCurrent ? 5 : 3}
+                <circle cx={toX(i)} cy={cy} r={isCurrent ? 5 : 3}
                   fill={isCurrent ? '#7C3AED' : '#fff'}
                   stroke="#7C3AED" strokeWidth="2" />
                 {isCurrent && (
-                  <circle cx={toX(i)} cy={toYW(r.weight)} r={9}
+                  <circle cx={toX(i)} cy={cy} r={9}
                     fill="none" stroke="#7C3AED" strokeWidth="1" opacity="0.3" />
                 )}
               </g>
